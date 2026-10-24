@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { ThemeToggle } from './theme';
 import { SourceManagerDrawer } from './source-manager';
@@ -11,13 +11,21 @@ import { Icon } from './icon';
 import { SearchHistoryDropdown, useSearchHistory } from './search-history';
 import { cn } from '@/lib/utils';
 
-/** 顶部导航：Logo、搜索框（首页外）、历史、设置 */
+/** 顶部导航保留原入口，滚动后使用高不透明度背景。 */
 export function Header({ showSearch = false }: { showSearch?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const update = () => setScrolled(window.scrollY > 16);
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    return () => window.removeEventListener('scroll', update);
+  }, []);
   // 与首页搜索框共用同一套「最近搜索」下拉逻辑
   const searchHistory = useSearchHistory(query);
 
@@ -37,16 +45,28 @@ export function Header({ showSearch = false }: { showSearch?: boolean }) {
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-surface/90 backdrop-blur border-b border-line">
-        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-3">
-          <Link href="/" aria-label="LibreTV 首页" className="flex items-center shrink-0">
+      <header
+        className={cn(
+          'sticky top-0 z-40 border-b transition-colors duration-200',
+          scrolled ? 'border-line bg-page/95' : 'border-transparent bg-page'
+        )}
+      >
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10 h-16 flex items-center gap-4 lg:gap-8">
+          <Link href="/" aria-label="PuTv 首页" className="flex items-center gap-2.5 shrink-0 rounded-lg">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/icons/icon-512.png" alt="LibreTV" className="w-7 h-7 rounded-lg" />
+            <img src="/logo.svg" alt="" className="w-8 h-8" />
+            <span className="text-xl font-semibold tracking-tight">PuTv</span>
           </Link>
+
+          <nav aria-label="主导航" className="hidden md:flex items-center gap-1 self-stretch">
+            <HeaderLink href="/" active={pathname === '/'}>首页</HeaderLink>
+            <HeaderLink href="/live" active={pathname === '/live'}>直播</HeaderLink>
+            <HeaderLink href="/about" active={pathname === '/about'}>关于</HeaderLink>
+          </nav>
 
           {showSearch && (
             <form
-              className="flex-1 max-w-xl hidden sm:block"
+              className="flex-1 max-w-sm hidden xl:block"
               onSubmit={(e) => {
                 e.preventDefault();
                 submitSearch(query);
@@ -94,27 +114,30 @@ export function Header({ showSearch = false }: { showSearch?: boolean }) {
             </form>
           )}
 
-          <div className="flex-1 sm:hidden" />
-
-          <nav className="flex items-center gap-1 ml-auto">
-            <HeaderLink href="/live" active={pathname === '/live'}>
-              直播
-            </HeaderLink>
-            <HeaderLink href="/about" active={pathname === '/about'}>
-              关于
-            </HeaderLink>
+          <nav aria-label="工具栏" className="flex items-center gap-0.5 sm:gap-1 ml-auto">
+            <Link href="/#search" aria-label="搜索影片" title="搜索影片" className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-muted hover:text-content hover:bg-hover transition-colors">
+              <Icon name="search" />
+            </Link>
             <ThemeToggle />
             <IconButton label="观看历史" onClick={() => setHistoryOpen(true)}>
               <Icon name="clock" />
             </IconButton>
-            <IconButton label="下载管理" onClick={requestShowDownloadManager}>
-              <Icon name="download" />
-            </IconButton>
+            <span className="hidden sm:inline-flex">
+              <IconButton label="下载管理" onClick={requestShowDownloadManager}>
+                <Icon name="download" />
+              </IconButton>
+            </span>
             <IconButton label="设置" onClick={() => setSettingsOpen(true)}>
               <Icon name="gear" />
             </IconButton>
           </nav>
         </div>
+        <nav aria-label="移动页面导航" className="md:hidden flex items-center justify-center gap-5 border-t border-line/60 px-4">
+          <HeaderLink href="/" active={pathname === '/'}>首页</HeaderLink>
+          <HeaderLink href="/live" active={pathname === '/live'}>直播</HeaderLink>
+          <HeaderLink href="/about" active={pathname === '/about'}>关于</HeaderLink>
+          <button type="button" onClick={requestShowDownloadManager} className="sm:hidden min-h-10 px-2 text-sm text-muted hover:text-content">下载</button>
+        </nav>
       </header>
 
       <SourceManagerDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
@@ -127,9 +150,10 @@ function HeaderLink({ href, active, children }: { href: string; active: boolean;
   return (
     <Link
       href={href}
+      aria-current={active ? 'page' : undefined}
       className={cn(
-        'px-2.5 py-1.5 rounded-md text-sm transition-colors',
-        active ? 'text-content bg-hover' : 'text-muted hover:text-content'
+        'inline-flex h-full min-h-10 items-center px-2.5 lg:px-3 text-sm font-medium border-b-2 transition-colors',
+        active ? 'text-content border-accent' : 'text-muted border-transparent hover:text-content'
       )}
     >
       {children}
@@ -140,7 +164,7 @@ function HeaderLink({ href, active, children }: { href: string; active: boolean;
 function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
-      className="p-2 rounded-md text-muted hover:text-content hover:bg-hover transition-colors"
+      className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-muted hover:text-content hover:bg-hover transition-colors"
       title={label}
       aria-label={label}
       onClick={onClick}

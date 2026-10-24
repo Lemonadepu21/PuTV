@@ -1,9 +1,6 @@
 import type { Config } from 'tailwindcss';
 
-/**
- * 语义化颜色 token：全部通过 CSS 变量驱动，支持亮暗主题切换。
- * 深色主题默认启用，沿用旧版 LibreTV（backup-2025）赛博配色并整体调深一档（#0b101a 页面 / #141c29 面板 / #0d141f 卡片 / #00ccff 霓虹蓝主色）。
- */
+/** 复用全局语义化 CSS 变量，颜色与透明度均支持两套主题。 */
 const config: Config = {
   darkMode: 'class',
   content: ['./src/**/*.{ts,tsx}'],
@@ -35,7 +32,7 @@ const config: Config = {
         warning: 'rgb(var(--c-warning) / <alpha-value>)',
         info: 'rgb(var(--c-info) / <alpha-value>)',
         rating: 'rgb(var(--c-rating) / <alpha-value>)',
-        // accent 实心底上的文字色：亮色=白、暗色=深（霓虹蓝底对白字对比度不足）
+        // accent 实心底上的文字色：亮色=白、暗色=深
         'on-accent': 'rgb(var(--c-on-accent) / <alpha-value>)',
         // 实心状态底色（配白字），比语义色更深一档保证对比度
         'danger-solid': 'rgb(var(--c-danger-solid) / <alpha-value>)',

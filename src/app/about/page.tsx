@@ -9,10 +9,19 @@ export default function AboutPage() {
       <Header />
       <main className="flex-1 max-w-2xl w-full mx-auto px-4 py-10 space-y-8">
         <section>
-          <h1 className="text-xl font-bold text-content mb-3">关于 LibreTV</h1>
+          <h1 className="text-xl font-bold text-content mb-3">关于 PuTv</h1>
           <p className="text-sm text-muted leading-relaxed">
-            LibreTV 是一个免费的在线视频搜索与观看平台。输入片名即可在多个点播源中聚合搜索，
+            PuTv 是一个免费的在线视频搜索与观看平台。输入片名即可在多个点播源中聚合搜索，
             无需注册、无内嵌广告、不存储任何视频文件。所有播放内容均来自第三方公开接口。
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-base font-semibold text-content mb-2.5">开源与来源</h2>
+          <p className="text-sm text-muted leading-relaxed">
+            PuTv 基于 <a className="text-accent underline underline-offset-4" href="https://github.com/LibreSpark/LibreTV">LibreTV</a>，
+            保留原项目的播放与数据能力，按 AGPL-3.0-or-later 许可证发布，无任何担保。
+            <a className="text-accent underline underline-offset-4" href="https://github.com/Lemonadepu21/putv">获取源码与构建说明</a>。
           </p>
         </section>
 

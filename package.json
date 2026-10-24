@@ -1,13 +1,13 @@
 {
-  "name": "libretv",
-  "version": "2.21.0",
+  "name": "putv",
+  "version": "2.21.0-putv.1",
   "private": true,
-  "description": "免费在线视频搜索与观看平台（Next.js 重构版）",
+  "description": "基于 LibreTV 的影视聚合搜索与观看平台",
   "license": "AGPL-3.0-or-later",
   "scripts": {
-    "dev": "next dev -p 8080",
+    "dev": "next dev --hostname 0.0.0.0 -p 8081",
     "build": "next build",
-    "start": "next start -p 8080",
+    "start": "next start --hostname 0.0.0.0 -p 8081",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
@@ -37,5 +37,9 @@
     "tailwindcss": "^3.4.15",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Lemonadepu21/putv.git"
   }
 }

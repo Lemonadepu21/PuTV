@@ -73,9 +73,9 @@ function UpdateTip({ update }: { update: UpstreamUpdate | null }) {
     update === null
       ? null
       : update.status === 'newer'
-        ? `发现新版本 v${update.latest}`
+        ? `LibreTV 上游新版本 v${update.latest}`
         : update.status === 'latest'
-          ? '已是最新版本'
+          ? '已跟随当前 LibreTV 上游版本'
           : '正在检测更新…';
   if (!tip) return null;
   return (
@@ -93,16 +93,18 @@ export function SiteFooter() {
     <footer className="border-t border-line py-4">
       <p className="text-center text-xs text-faint">
         <a
-          href="https://github.com/LibreSpark/LibreTV"
+          href="https://github.com/Lemonadepu21/putv"
           target="_blank"
           rel="noopener noreferrer"
           className="group relative inline-block cursor-help hover:text-accent"
         >
-          LibreTV{version ? ` v${version}` : ''}
+          PuTv{version ? ` v${version}` : ''}
           {version && <UpdateTip update={upstreamUpdate} />}
         </a>
         {' · '}
-        AGPL-3.0 License
+        <a href="https://github.com/LibreSpark/LibreTV" className="hover:text-accent">基于 LibreTV</a>
+        {' · '}
+        <a href="https://github.com/Lemonadepu21/putv/blob/main/LICENSE" className="hover:text-accent">AGPL-3.0-or-later</a>
       </p>
     </footer>
   );

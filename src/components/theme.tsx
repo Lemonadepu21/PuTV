@@ -69,12 +69,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 export function ThemeToggle() {
   const { theme, resolved, setTheme } = useTheme();
   const next: ThemeChoice = theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light';
-  const label = theme === 'system' ? '跟随系统（当前深色）' : theme === 'dark' ? '深色' : '浅色';
+  const label = theme === 'system' ? `跟随系统（当前${resolved === 'dark' ? '深色' : '浅色'}）` : theme === 'dark' ? '深色' : '浅色';
   const nextLabel = next === 'light' ? '浅色' : next === 'dark' ? '深色' : '跟随系统';
 
   return (
     <button
-      className="p-2 rounded-md text-muted hover:text-content hover:bg-hover transition-colors"
+      className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-muted hover:text-content hover:bg-hover transition-colors"
       title={`主题：${label}，点击切换为${nextLabel}`}
       aria-label={`切换主题，当前 ${label}`}
       onClick={() => setTheme(next)}
