@@ -10,6 +10,7 @@ import { fetchUpstream, getCache, setCache } from './fetch-utils';
  */
 
 const CACHE_TTL = 60 * 60 * 1000;
+const EXCLUDED_RECOMMEND_TAGS = new Set(['预告', '预告片', '先导预告', '先导片', '待上映', '即将上映', '未上映', '院线热映']);
 const UA = 'LibreTV (+https://github.com/LibreSpark/LibreTV)';
 
 const FALLBACK_BASE = 'https://60s.viki.moe';
@@ -50,6 +51,7 @@ interface DoubanWeeklyRaw {
   rating?: number;
   cover_proxy?: string;
   cover?: string;
+  tags?: unknown;
 }
 
 interface BaiduTeleplayRaw {
@@ -121,12 +123,19 @@ export async function fetchHotList(id: HotListId): Promise<DoubanItem[]> {
   if (cached) return cached;
 
   let items: DoubanItem[];
+  let excludedIds: Set<string> | undefined;
 
   const category = DOUBAN_WEEKLY_CATEGORY[id];
   if (category) {
     const raw = (await fetchJson(`/v2/douban/weekly/${category}`)) as SixtyResponse<DoubanWeeklyRaw[]>;
     const isTv = id !== 'douban_movie_weekly';
-    items = assertArray<DoubanWeeklyRaw>(raw.data, '豆瓣周榜')
+    const entries = assertArray<DoubanWeeklyRaw>(raw.data, '豆瓣周榜');
+    excludedIds = new Set(entries.filter((entry) =>
+      Array.isArray(entry.tags) && entry.tags.some((tag: unknown) =>
+        typeof tag === 'string' && EXCLUDED_RECOMMEND_TAGS.has(tag.trim())
+      )
+    ).map((entry) => String(entry.id)));
+    items = entries
       .map((entry) => doubanWeeklyToItem(entry, isTv))
       .filter((item): item is DoubanItem => item !== undefined);
   } else {
@@ -137,6 +146,8 @@ export async function fetchHotList(id: HotListId): Promise<DoubanItem[]> {
   }
 
   if (items.length === 0) throw new Error('榜单数据为空');
+  // 先验证上游数据，再过滤推荐：全部被排除时返回正常空片单。
+  if (excludedIds) items = items.filter((item) => !excludedIds.has(item.id));
 
   setCache(cacheKey, items, CACHE_TTL);
   return items;

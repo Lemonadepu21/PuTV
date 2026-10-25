@@ -12,7 +12,7 @@ import { SearchHistoryDropdown, useSearchHistory } from './search-history';
 import { cn } from '@/lib/utils';
 
 /** 顶部导航保留原入口，滚动后使用高不透明度背景。 */
-export function Header({ showSearch = false }: { showSearch?: boolean }) {
+export function Header({ showSearch = false, immersive = false }: { showSearch?: boolean; immersive?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -48,7 +48,7 @@ export function Header({ showSearch = false }: { showSearch?: boolean }) {
       <header
         className={cn(
           'sticky top-0 z-40 border-b transition-colors duration-200',
-          scrolled ? 'border-line bg-page/95' : 'border-transparent bg-page'
+          scrolled ? 'border-line bg-page/95' : immersive ? 'cinema-header border-transparent bg-transparent' : 'border-transparent bg-page'
         )}
       >
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10 h-16 flex items-center gap-4 lg:gap-8">
@@ -135,8 +135,8 @@ export function Header({ showSearch = false }: { showSearch?: boolean }) {
         <nav aria-label="移动页面导航" className="md:hidden flex items-center justify-center gap-5 border-t border-line/60 px-4">
           <HeaderLink href="/" active={pathname === '/'}>首页</HeaderLink>
           <HeaderLink href="/live" active={pathname === '/live'}>直播</HeaderLink>
-          <HeaderLink href="/about" active={pathname === '/about'}>关于</HeaderLink>
           <button type="button" onClick={requestShowDownloadManager} className="sm:hidden min-h-10 px-2 text-sm text-muted hover:text-content">下载</button>
+          <HeaderLink href="/about" active={pathname === '/about'}>关于</HeaderLink>
         </nav>
       </header>
 

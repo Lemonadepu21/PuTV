@@ -6,13 +6,13 @@ import { api } from '@/lib/client-api';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import type { DoubanItem } from '@/lib/types';
-import { DoubanCard } from './video-card';
+import { RecommendationLayout } from './recommendation-layout';
 
 const MOVIE_TAGS = ['热门', '最新', '经典', '豆瓣高分', '冷门佳片', '华语', '欧美', '韩国', '日本', '动画'];
 const TV_TAGS = ['热门', '美剧', '英剧', '韩剧', '日剧', '国产剧', '港剧', '日本动画', '综艺', '纪录片'];
 const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
-/** 首页推荐区：数据源由设置决定（豆瓣热门 / Bangumi 新番放送 / 影视热榜），二选一展示 */
+/** 首页推荐区：数据源由设置决定（豆瓣热门 / Bangumi 新番放送 / 影视热榜），按设置择一展示 */
 export function RecommendSection({ onPick }: { onPick: (title: string) => void }) {
   const doubanEnabled = useAppStore((s) => s.doubanEnabled);
   const recommendSource = useAppStore((s) => s.recommendSource);
@@ -25,8 +25,7 @@ export function RecommendSection({ onPick }: { onPick: (title: string) => void }
 
 /**
  * 豆瓣推荐：影视切换 + 标签筛选。
- * 一次性渲染全部条目：数据本就一次拉全（50 条），卡片图片又是 lazy 加载，
- * 视口外的图不会请求，因此不需要「加载更多」这类本地切片分页来打断浏览。
+ * 数据一次拉全（50 条），横向列表复用原条目与懒加载海报。
  */
 function DoubanView({ onPick }: { onPick: (title: string) => void }) {
   const [type, setType] = useState<'movie' | 'tv'>('movie');
@@ -47,7 +46,11 @@ function DoubanView({ onPick }: { onPick: (title: string) => void }) {
   };
 
   return (
-    <section aria-label="影视推荐">
+    <RecommendationLayout
+      title={`${tag}${type === 'movie' ? '电影' : '剧集'}`}
+      items={items} loading={query.isLoading} error={query.isError}
+      onRetry={() => { void query.refetch(); }} onPick={onPick}
+    >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <div className="flex bg-chip rounded-lg p-0.5">
@@ -61,7 +64,7 @@ function DoubanView({ onPick }: { onPick: (title: string) => void }) {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 mb-4">
+      <div className="flex flex-wrap gap-1.5">
         {tags.map((t) => (
           <button
             key={t}
@@ -70,26 +73,13 @@ function DoubanView({ onPick }: { onPick: (title: string) => void }) {
               t === tag ? 'bg-accent text-on-accent' : 'bg-chip text-muted hover:text-content hover:bg-hover'
             )}
             onClick={() => setTag(t)}
+            aria-pressed={t === tag}
           >
             {t}
           </button>
         ))}
       </div>
-
-      {query.isError ? (
-        <p className="text-center text-sm text-faint py-8">推荐内容加载失败，可稍后重试或在设置中关闭</p>
-      ) : query.isLoading ? (
-        <GridSkeleton />
-      ) : items.length === 0 ? (
-        <p className="text-center text-sm text-faint py-8">该分类暂无推荐内容</p>
-      ) : (
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5">
-          {items.map((item) => (
-            <DoubanCard key={item.id} item={item} onClick={() => onPick(item.title)} />
-          ))}
-        </div>
-      )}
-    </section>
+    </RecommendationLayout>
   );
 }
 
@@ -110,8 +100,12 @@ function BangumiView({ onPick }: { onPick: (title: string) => void }) {
   }
 
   return (
-    <section aria-label="新番放送推荐">
-      <div className="flex flex-wrap gap-1.5 mb-4">
+    <RecommendationLayout
+      title={weekday === 'all' ? '新番放送' : `${WEEKDAYS[weekday - 1]}新番`}
+      items={items} loading={query.isLoading} error={query.isError}
+      onRetry={() => { void query.refetch(); }} onPick={onPick}
+    >
+      <div className="flex flex-wrap gap-1.5">
         <ChipButton active={weekday === 'all'} onClick={() => setWeekday('all')}>
           全部
         </ChipButton>
@@ -121,19 +115,7 @@ function BangumiView({ onPick }: { onPick: (title: string) => void }) {
           </ChipButton>
         ))}
       </div>
-
-      {query.isError ? (
-        <p className="text-center text-sm text-faint py-8">推荐内容加载失败，可稍后重试或在设置中关闭</p>
-      ) : query.isLoading ? (
-        <GridSkeleton />
-      ) : (
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5">
-          {items.map((item) => (
-            <DoubanCard key={item.id} item={item} onClick={() => onPick(item.title)} />
-          ))}
-        </div>
-      )}
-    </section>
+    </RecommendationLayout>
   );
 }
 
@@ -158,40 +140,19 @@ function HotListView({ onPick }: { onPick: (title: string) => void }) {
   const items = query.data?.items ?? [];
 
   return (
-    <section aria-label="影视榜单推荐">
-      <div className="flex flex-wrap gap-1.5 mb-4">
+    <RecommendationLayout
+      title={HOT_LISTS.find((list) => list.id === listId)!.label}
+      items={items} loading={query.isLoading} error={query.isError}
+      onRetry={() => { void query.refetch(); }} onPick={onPick}
+    >
+      <div className="flex flex-wrap gap-1.5">
         {HOT_LISTS.map((l) => (
           <ChipButton key={l.id} active={listId === l.id} onClick={() => setListId(l.id)}>
             {l.label}
           </ChipButton>
         ))}
       </div>
-
-      {query.isError ? (
-        <p className="text-center text-sm text-faint py-8">推荐内容加载失败，可稍后重试或在设置中关闭</p>
-      ) : query.isLoading ? (
-        <GridSkeleton />
-      ) : (
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5">
-          {items.map((item) => (
-            <DoubanCard key={item.id} item={item} onClick={() => onPick(item.title)} />
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function GridSkeleton() {
-  return (
-    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5">
-      {Array.from({ length: 16 }).map((_, i) => (
-        <div key={i}>
-          <div className="aspect-[2/3] rounded-lg bg-chip animate-pulse" />
-          <div className="h-3 mt-2 rounded bg-chip animate-pulse" />
-        </div>
-      ))}
-    </div>
+    </RecommendationLayout>
   );
 }
 
@@ -203,6 +164,7 @@ function ChipButton({ active, onClick, children }: { active: boolean; onClick: (
         active ? 'bg-accent text-on-accent' : 'bg-chip text-muted hover:text-content hover:bg-hover'
       )}
       onClick={onClick}
+      aria-pressed={active}
     >
       {children}
     </button>

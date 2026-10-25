@@ -393,55 +393,33 @@ export function VideoCard({ item, onClick }: { item: SearchResultItem; onClick: 
   );
 }
 
-/** 豆瓣推荐卡片（无来源徽章，点击直接搜索） */
+/** 推荐海报卡片：保留原版点击搜索行为，不增加详情请求。 */
 export function DoubanCard({ item, onClick }: { item: { title: string; cover: string; rating?: string }; onClick: () => void }) {
   const imageProxyMode = useAppStore((s) => s.imageProxyMode);
   const customImageProxy = useAppStore((s) => s.customImageProxy);
   const [imgFailed, setImgFailed] = useState(false);
-  useEffect(() => setImgFailed(false), [item.cover]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    setImgFailed(false);
+    setLoaded(false);
+  }, [item.cover, imageProxyMode, customImageProxy]);
 
   return (
-    <div
-      className="card cursor-pointer hover:scale-[1.03] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          // 阻止空格触发页面滚动（AggregatedCard 已是此写法，此处对齐）
-          e.preventDefault();
-          onClick();
-        }
-      }}
-    >
-      <div className="relative aspect-[2/3] bg-chip">
+    <button type="button" data-poster className="group block w-full min-w-0 rounded-xl text-left" onClick={onClick} aria-label={`查找 ${item.title} 的片源`}>
+      <span className="relative block aspect-[2/3] overflow-hidden rounded-xl bg-chip">
+        {!loaded && !imgFailed && item.cover && <span aria-hidden="true" className="absolute inset-0 animate-pulse bg-chip" />}
         {item.cover && !imgFailed ? (
           <SmartImage
-            url={item.cover}
-            mode={imageProxyMode}
-            customProxy={customImageProxy}
-            alt={item.title}
-            className="w-full h-full object-cover"
-            onExhausted={() => setImgFailed(true)}
+            url={item.cover} mode={imageProxyMode} customProxy={customImageProxy} alt=""
+            className="relative h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.025] motion-reduce:transform-none"
+            onLoad={() => setLoaded(true)} onExhausted={() => setImgFailed(true)}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-chip">
-            <svg className="w-8 h-8 text-faint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 4v16m10-16v16M3 6a1 1 0 011-1h1a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V6zm4 0a1 1 0 011-1h1a1 1 0 011 1v12a1 1 0 01-1 1h-1a1 1 0 01-1-1V6zm8 0a1 1 0 011-1h1a1 1 0 011 1v12a1 1 0 01-1 1h-1a1 1 0 01-1-1V6zm4 0a1 1 0 011-1h1a1 1 0 011 1v12a1 1 0 01-1 1h-1a1 1 0 01-1-1V6z" />
-            </svg>
-          </div>
+          <span className="absolute inset-0 flex items-center justify-center text-xs text-faint">暂无海报</span>
         )}
-        {item.rating && (
-          <span className={cn('absolute top-1.5 right-1.5 tag bg-black/70 text-rating font-medium')}>
-            ★ {item.rating}
-          </span>
-        )}
-      </div>
-      <div className="p-2">
-        <div className="text-xs font-medium text-content truncate" title={item.title}>
-          {item.title}
-        </div>
-      </div>
-    </div>
+      </span>
+      <span className="mt-3 min-h-[2.8em] text-sm font-medium leading-snug text-content line-clamp-2" title={item.title}>{item.title}</span>
+      {item.rating && <span className="mt-1 block text-xs text-muted">评分 {item.rating}</span>}
+    </button>
   );
 }

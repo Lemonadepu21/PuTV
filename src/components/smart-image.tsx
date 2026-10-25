@@ -11,6 +11,7 @@ interface SmartImageProps {
   alt: string;
   className?: string;
   loading?: 'lazy' | 'eager';
+  onLoad?: () => void;
   /** 候选链耗尽后回调，调用方切换占位图等兜底 UI */
   onExhausted?: () => void;
 }
@@ -28,6 +29,7 @@ export function SmartImage({
   alt,
   className,
   loading = 'lazy',
+  onLoad,
   onExhausted,
 }: SmartImageProps) {
   const candidates = buildImageCandidates(url, mode, customProxy);
@@ -51,6 +53,7 @@ export function SmartImage({
       loading={loading}
       referrerPolicy="no-referrer"
       onError={() => setIdx((i) => i + 1)}
+      onLoad={onLoad}
     />
   );
 }

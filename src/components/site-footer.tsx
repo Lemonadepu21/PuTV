@@ -101,10 +101,6 @@ export function SiteFooter() {
           PuTv{version ? ` v${version}` : ''}
           {version && <UpdateTip update={upstreamUpdate} />}
         </a>
-        {' · '}
-        <a href="https://github.com/LibreSpark/LibreTV" className="hover:text-accent">基于 LibreTV</a>
-        {' · '}
-        <a href="https://github.com/Lemonadepu21/putv/blob/main/LICENSE" className="hover:text-accent">AGPL-3.0-or-later</a>
       </p>
     </footer>
   );

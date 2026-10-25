@@ -37,6 +37,7 @@ function HomeContent() {
   const router = useRouter();
   const { toast } = useToast();
   const urlQuery = searchParams.get('s') || '';
+  const recommendationsEnabled = useAppStore((s) => s.doubanEnabled);
   // 精确订阅所需字段（对齐 live 页的做法）：搜索流式期间逐源写健康度、
   // 打开设置抽屉/历史面板等无关 store 变化，都不应触发首页整树重渲染
   const customAPIs = useAppStore((s) => s.customAPIs);
@@ -165,16 +166,23 @@ function HomeContent() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header />
+      <Header immersive={!urlQuery && recommendationsEnabled} />
 
-      <main className="relative flex-1 max-w-[1440px] w-full mx-auto px-4 sm:px-6 lg:px-10 py-8">
+      <main className="relative min-w-0 flex-1 w-full">
+        {!urlQuery && (
+          <RecommendSection
+            onPick={(title) => {
+              setInput(title);
+              runSearch(title);
+              window.scrollTo({ top: 0, behavior: 'instant' });
+            }}
+          />
+        )}
         {/* 搜索区 */}
-        <section id="search" className={cn('flex flex-col items-center', urlQuery ? 'mb-6' : 'mt-8 mb-8')}>
-          {!urlQuery && (
-            <header className="text-center mb-6">
-              <h1 className="text-4xl sm:text-5xl font-bold brand-gradient">PuTv</h1>
-            </header>
-          )}
+        <section id="search" className={cn('content-container py-8 flex flex-col items-center scroll-mt-28', urlQuery ? 'mb-6' : 'mt-6 mb-8')}>
+          {!urlQuery && (recommendationsEnabled
+            ? <h2 className="mb-5 text-xl font-semibold">搜索影片</h2>
+            : <h1 className="mb-5 text-xl font-semibold">搜索影片</h1>)}
           {urlQuery && <h1 className="sr-only">PuTv 视频搜索</h1>}
           {/* 定位容器比胶囊宽一圈：浮层按它的宽度对齐，接缝处不会与胶囊边框错位 1px */}
           <div ref={searchHistory.containerRef} className="relative w-full max-w-2xl">
@@ -270,7 +278,7 @@ function HomeContent() {
 
         {/* 搜索结果 */}
         {urlQuery && (
-          <section aria-label="搜索结果" className="mb-10">
+          <section aria-label="搜索结果" className="content-container mb-10">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm text-muted">
                 “<span className="text-content">{urlQuery}</span>” 的搜索结果
@@ -352,15 +360,6 @@ function HomeContent() {
           </section>
         )}
 
-        {/* 首页推荐（有搜索时隐藏） */}
-        {!urlQuery && (
-          <RecommendSection
-            onPick={(title) => {
-              setInput(title);
-              runSearch(title);
-            }}
-          />
-        )}
       </main>
 
       <SiteFooter />
