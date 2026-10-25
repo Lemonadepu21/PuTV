@@ -420,3 +420,23 @@ html {
 [class~="hover:bg-warning/25"]:hover { background-color: rgb(var(--c-warning) / calc(var(--c-state-tint) + .05)); }
 [class~="bg-success/15"] { background-color: rgb(var(--c-success) / var(--c-state-tint)); }
 [class~="bg-info/15"] { background-color: rgb(var(--c-info) / var(--c-state-tint)); }
+
+/* 继续观看复用横向片单交互，横版卡片为进度留出空间。 */
+.continue-track {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 78%;
+  gap: 1rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+.continue-track::-webkit-scrollbar { display: none; }
+.continue-track > * { scroll-snap-align: start; }
+@media (min-width: 640px) {
+  .continue-track { grid-auto-columns: calc((100% - 2rem) / 3); }
+}
+@media (min-width: 1024px) {
+  .continue-track { grid-auto-columns: calc((100% - 3.75rem) / 4); gap: 1.25rem; }
+}

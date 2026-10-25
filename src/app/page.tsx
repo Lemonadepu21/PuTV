@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
+import { ContinueWatching } from '@/components/continue-watching';
 import { Header } from '@/components/header';
 import { CategorySection, RecommendSection } from '@/components/douban-section';
 import { DetailModal } from '@/components/detail-modal';
@@ -166,10 +167,13 @@ function HomeContent() {
         ) : recommendationsEnabled ? (
           <RecommendSection onPick={runSearch} />
         ) : (
-          <section className="content-container py-24 text-center">
-            <h1 className="mb-6 text-3xl font-semibold">PuTV</h1>
-            <button type="button" className="btn-primary min-h-12 px-6" onClick={() => setSearchOpen(true)}><Icon name="search" />搜索影片</button>
-          </section>
+          <>
+            <ContinueWatching />
+            <section className="content-container py-24 text-center">
+              <h1 className="mb-6 text-3xl font-semibold">PuTV</h1>
+              <button type="button" className="btn-primary min-h-12 px-6" onClick={() => setSearchOpen(true)}><Icon name="search" />搜索影片</button>
+            </section>
+          </>
         ))}
 
         {/* 搜索结果 */}
