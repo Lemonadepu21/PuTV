@@ -8,8 +8,9 @@ import { Icon } from './icon';
 import { SmartImage } from './smart-image';
 
 export function RecommendationLayout({
-  title, items, loading, error, onRetry, onPick, children,
+  title, items, loading, error, onRetry, onPick, children, layout = 'home',
 }: {
+  layout?: 'home' | 'grid';
   title: string;
   items: DoubanItem[];
   loading: boolean;
@@ -20,8 +21,9 @@ export function RecommendationLayout({
 }) {
   return (
     <>
-      <RecommendationHero key={title} title={title} items={error ? [] : items} loading={loading} onPick={onPick} />
-      <section id="recommendations" aria-label="推荐片单" className="content-container pt-7 sm:pt-10">
+      {layout === 'home' && <RecommendationHero key={title} title={title} items={error ? [] : items} loading={loading} onPick={onPick} />}
+      <section id="recommendations" aria-label={layout === 'grid' ? title : '推荐片单'} className={`content-container ${layout === 'grid' ? 'py-8 sm:py-10' : 'pt-7 sm:pt-10'}`}>
+        {layout === 'grid' && <h1 className="mb-6 text-2xl sm:text-3xl font-semibold tracking-tight">{title}</h1>}
         <div className="mb-5 space-y-3">{children}</div>
         {error ? (
           <div role="status" className="rounded-xl bg-surface py-10 text-center">
@@ -29,9 +31,13 @@ export function RecommendationLayout({
             <button type="button" className="btn-ghost mt-4" onClick={onRetry}>重试</button>
           </div>
         ) : loading ? (
-          <ShelfSkeleton />
+          <ShelfSkeleton layout={layout} />
         ) : items.length === 0 ? (
           <p role="status" className="py-10 text-sm text-muted">该分类暂无推荐内容</p>
+        ) : layout === 'grid' ? (
+          <div className="poster-grid" role="list" aria-label={title}>
+            {items.map((item) => <div role="listitem" key={item.id} className="min-w-0"><DoubanCard item={item} onClick={() => onPick(item.title)} /></div>)}
+          </div>
         ) : (
           <PosterShelf key={title} title={title} items={items} onPick={onPick} />
         )}
@@ -189,12 +195,12 @@ function PosterShelf({ title, items, onPick }: {
   );
 }
 
-function ShelfSkeleton() {
+function ShelfSkeleton({ layout }: { layout: 'home' | 'grid' }) {
   return (
     <div role="status" aria-label="正在加载片单">
       <div className="mb-4 h-6 w-28 rounded bg-chip animate-pulse" />
-      <div className="poster-track overflow-hidden" aria-hidden="true">
-        {Array.from({ length: 7 }, (_, index) => <div key={index}><div className="aspect-[2/3] rounded-xl bg-chip animate-pulse" /><div className="mt-3 h-4 w-3/4 rounded bg-chip animate-pulse" /></div>)}
+      <div className={layout === 'grid' ? 'poster-grid' : 'poster-track overflow-hidden'} aria-hidden="true">
+        {Array.from({ length: layout === 'grid' ? 12 : 7 }, (_, index) => <div key={index}><div className="aspect-[2/3] rounded-xl bg-chip animate-pulse" /><div className="mt-3 h-4 w-3/4 rounded bg-chip animate-pulse" /></div>)}
       </div>
     </div>
   );

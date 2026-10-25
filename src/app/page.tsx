@@ -1,21 +1,23 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Header } from '@/components/header';
-import { RecommendSection } from '@/components/douban-section';
+import { CategorySection, RecommendSection } from '@/components/douban-section';
 import { DetailModal } from '@/components/detail-modal';
 import { AggregatedCard, aggregateResults } from '@/components/video-card';
 import { useAppStore, resolveSource, isInDisabledSubscription, isSourceDisabled } from '@/lib/store';
 import { api } from '@/lib/client-api';
 import type { SearchResultItem, SourceSearchOutcome } from '@/lib/types';
-import { SearchHistoryDropdown, useSearchHistory } from '@/components/search-history';
-import { cn, formatDisableTtl, validateSourceUrl } from '@/lib/utils';
+import { useSearchHistory } from '@/components/search-history';
+import { formatDisableTtl, validateSourceUrl } from '@/lib/utils';
 import { useToast } from '@/components/toast';
-import { EmptyState } from '@/components/states';
+import { EmptyState, ErrorState } from '@/components/states';
 import { Icon } from '@/components/icon';
 import { SiteFooter } from '@/components/site-footer';
+import { SearchDialog } from '@/components/search-dialog';
+import { BROWSE_CATEGORIES } from '@/lib/browse-categories';
 
 /**
  * 首页：搜索（URL ?s= 驱动，可后退/分享）+ 豆瓣推荐。
@@ -37,6 +39,7 @@ function HomeContent() {
   const router = useRouter();
   const { toast } = useToast();
   const urlQuery = searchParams.get('s') || '';
+  const category = BROWSE_CATEGORIES.find((entry) => entry.id === searchParams.get('category'))?.id;
   const recommendationsEnabled = useAppStore((s) => s.doubanEnabled);
   // 精确订阅所需字段（对齐 live 页的做法）：搜索流式期间逐源写健康度、
   // 打开设置抽屉/历史面板等无关 store 变化，都不应触发首页整树重渲染
@@ -46,17 +49,11 @@ function HomeContent() {
   const yellowFilter = useAppStore((s) => s.yellowFilter);
   const sourceHealth = useAppStore((s) => s.sourceHealth);
   const subscriptions = useAppStore((s) => s.subscriptions);
-  const [input, setInput] = useState(urlQuery);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const closeSearch = useCallback(() => setSearchOpen(false), []);
   const [detailItem, setDetailItem] = useState<SearchResultItem | null>(null);
   /** 流式搜索中已结算的源（data 就绪前用于增量渲染） */
   const [streamedOutcomes, setStreamedOutcomes] = useState<SourceSearchOutcome[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // URL 驱动搜索：?s= 变化时回填输入框
-  useEffect(() => {
-    if (urlQuery) setInput(urlQuery);
-  }, [urlQuery]);
-
   // 源名回显：失败/停用提示里显示友好名称而非裸 key
   const sourceName = (key: string) =>
     customAPIs.find((a) => a.key === key)?.name ??
@@ -118,27 +115,22 @@ function HomeContent() {
   });
 
   // 最近搜索改为搜索框下拉（聚焦展开、按输入过滤），不再常驻首屏
-  const searchHistory = useSearchHistory(input);
+  const searchHistory = useSearchHistory('');
 
   const runSearch = (q: string) => {
     const query = q.trim().slice(0, 100);
     if (!query) {
       toast('请输入搜索内容', 'info');
-      inputRef.current?.focus();
-      return;
+      return false;
     }
     if (selectedSources.length === 0) {
       toast('请先在设置中添加并勾选点播源', 'warning');
-      return;
+      return false;
     }
     router.push(`/?s=${encodeURIComponent(query)}`, { scroll: false });
     searchHistory.record(query);
-  };
-
-  const pickHistory = (text: string) => {
-    setInput(text);
-    searchHistory.close();
-    runSearch(text);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    return true;
   };
 
   const isSearching = Boolean(urlQuery) && searchQuery.isFetching && !searchQuery.data;
@@ -166,121 +158,29 @@ function HomeContent() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header immersive={!urlQuery && recommendationsEnabled} />
+      <Header immersive={!urlQuery && !category && recommendationsEnabled} category={category} searchQuery={urlQuery} onSearch={runSearch} />
 
       <main className="relative min-w-0 flex-1 w-full">
-        {!urlQuery && (
-          <RecommendSection
-            onPick={(title) => {
-              setInput(title);
-              runSearch(title);
-              window.scrollTo({ top: 0, behavior: 'instant' });
-            }}
-          />
-        )}
-        {/* 搜索区 */}
-        <section id="search" className={cn('content-container py-8 flex flex-col items-center scroll-mt-28', urlQuery ? 'mb-6' : 'mt-6 mb-8')}>
-          {!urlQuery && (recommendationsEnabled
-            ? <h2 className="mb-5 text-xl font-semibold">搜索影片</h2>
-            : <h1 className="mb-5 text-xl font-semibold">搜索影片</h1>)}
-          {urlQuery && <h1 className="sr-only">PuTv 视频搜索</h1>}
-          {/* 定位容器比胶囊宽一圈：浮层按它的宽度对齐，接缝处不会与胶囊边框错位 1px */}
-          <div ref={searchHistory.containerRef} className="relative w-full max-w-2xl">
-            <form
-              className="w-full"
-              onSubmit={(e) => {
-                e.preventDefault();
-                runSearch(input);
-              }}
-            >
-              {/* 输入框与搜索按钮合并为一个胶囊：内部无边框，焦点态由容器统一表达；
-                  下拉展开时改为「上圆下直」并隐去底边，与下方浮层拼成同一个面板 */}
-              <div
-                className={cn(
-                  // 12px 圆角矩形（非胶囊）：收起态与展开态共用同一组上圆角，
-                  // 展开时输入框这部分形状完全不发生变化，上下圆角也与下拉保持一致；
-                  // 右侧与上下不留内边距，由搜索按钮拉伸填满、与搜索框边缘贴合
-                  'flex items-stretch min-h-12 pl-4 border',
-                  'transition-[background-color,border-color,border-radius] duration-200',
-                  searchHistory.visible
-                    ? // 展开时：外框（含上圆角）沿用输入框的聚焦样式不变，只把底边改为内部分隔线，
-                      // 使输入区在展开状态下仍是边界清晰的独立输入框，而非与列表糊成一片
-                      'rounded-t-xl rounded-b-none border-accent border-b-line bg-surface-raised'
-                    : 'rounded-xl border-line bg-chip focus-within:border-accent focus-within:ring-1 focus-within:ring-accent/40'
-                )}
-              >
-                <input
-                  ref={inputRef}
-                  className="flex-1 min-w-0 pr-2 bg-transparent text-sm text-content placeholder:text-faint focus:outline-none"
-                  placeholder="输入影片名称..."
-                  value={input}
-                  maxLength={100}
-                  onChange={(e) => {
-                    setInput(e.target.value);
-                    searchHistory.resetActive();
-                  }}
-                  onFocus={searchHistory.onFocus}
-                  onKeyDown={(e) => searchHistory.onKeyDown(e, pickHistory)}
-                  role="combobox"
-                  aria-label="搜索影片"
-                  aria-expanded={searchHistory.visible}
-                  aria-controls="home-search-history"
-                  aria-autocomplete="list"
-                  aria-activedescendant={
-                    searchHistory.visible && searchHistory.activeIndex >= 0
-                      ? `home-search-history-${searchHistory.activeIndex}`
-                      : undefined
-                  }
-                />
-                {input && (
-                  <button
-                    type="button"
-                    className="shrink-0 self-center mr-1 p-1.5 rounded-full text-faint hover:text-content hover:bg-hover transition-colors"
-                    onClick={() => {
-                      setInput('');
-                      searchHistory.resetActive();
-                      inputRef.current?.focus();
-                    }}
-                    aria-label="清空"
-                  >
-                    <Icon name="close" className="w-4 h-4" />
-                  </button>
-                )}
-                {/* 主操作按钮：贴合搜索框右端——右侧圆角跟随容器、左侧直角，展开时右下角
-                    跟着容器一起改直角；按压改用亮度反馈（缩放会让贴合边缘露出缝隙） */}
-                <button
-                  type="submit"
-                  className={cn(
-                    'btn-primary shrink-0 px-4 font-medium transition-[background-color,filter] active:brightness-90',
-                    '!rounded-l-none',
-                    searchHistory.visible ? '!rounded-tr-xl !rounded-br-none' : '!rounded-r-xl'
-                  )}
-                >
-                  <Icon name="search" className="w-4 h-4" />
-                  搜索
-                </button>
-              </div>
-            </form>
-
-            {/* 最近搜索：与输入框无缝拼接；浮层不占文档流，出现/消失不会顶动下方内容 */}
-            {searchHistory.visible && (
-              <SearchHistoryDropdown
-                id="home-search-history"
-                matches={searchHistory.matches}
-                activeIndex={searchHistory.activeIndex}
-                onPick={pickHistory}
-                onRemove={searchHistory.remove}
-                onClearAll={searchHistory.clearAll}
-              />
-            )}
-          </div>
-        </section>
+        {!urlQuery && (category ? (
+          <CategorySection key={category} category={category} onPick={runSearch} />
+        ) : recommendationsEnabled ? (
+          <RecommendSection onPick={runSearch} />
+        ) : (
+          <section className="content-container py-24 text-center">
+            <h1 className="mb-6 text-3xl font-semibold">PuTv</h1>
+            <button type="button" className="btn-primary min-h-12 px-6" onClick={() => setSearchOpen(true)}><Icon name="search" />搜索影片</button>
+          </section>
+        ))}
 
         {/* 搜索结果 */}
         {urlQuery && (
-          <section aria-label="搜索结果" className="content-container mb-10">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm text-muted">
+          <section aria-label="搜索结果" className="content-container py-8 sm:py-10">
+            <div className="mb-6 flex items-center justify-between gap-4">
+              <h1 className="text-2xl sm:text-3xl font-semibold">搜索结果</h1>
+              <button type="button" className="btn-ghost shrink-0" onClick={() => setSearchOpen(true)}><Icon name="search" className="h-4 w-4" />修改搜索</button>
+            </div>
+            <div className="mb-5">
+              <p role="status" className="text-sm text-muted break-words">
                 “<span className="text-content">{urlQuery}</span>” 的搜索结果
                 {isSearching ? (
                   <span className="text-faint">
@@ -293,7 +193,7 @@ function HomeContent() {
                     </span>
                   )
                 )}
-              </h2>
+              </p>
             </div>
 
             {failures.length > 0 && (
@@ -326,7 +226,7 @@ function HomeContent() {
               <NoSourceGuide hasSources={customAPIs.length > 0 || envSources.length > 0} />
             ) : list.length > 0 ? (
               <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
+                <div className="poster-grid items-start">
                   {visibleGroups.map((group) => (
                     <AggregatedCard
                       key={group.key}
@@ -349,6 +249,8 @@ function HomeContent() {
               </>
             ) : isSearching ? (
               <ResultsSkeleton />
+            ) : searchQuery.isError ? (
+              <ErrorState message="搜索失败，请重试或检查点播源" onRetry={() => { void searchQuery.refetch(); }} />
             ) : (
               <EmptyState
                 icon="search"
@@ -364,6 +266,7 @@ function HomeContent() {
 
       <SiteFooter />
 
+      {searchOpen && <SearchDialog onClose={closeSearch} onSearch={runSearch} initialQuery={urlQuery} />}
       <DetailModal item={detailItem} onClose={() => setDetailItem(null)} />
     </div>
   );
@@ -371,16 +274,12 @@ function HomeContent() {
 
 function ResultsSkeleton() {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-      {Array.from({ length: 6 }).map((_, i) => (
-        // 结构对齐真实结果卡（左侧缩略图 + 右侧文字块），避免占位与真实卡片形状不符
-        <div key={i} className="card flex h-28 overflow-hidden">
-          <div className="w-[105px] sm:w-[120px] shrink-0 bg-chip animate-pulse" />
-          <div className="flex-1 p-2.5 space-y-2">
-            <div className="h-4 w-3/4 rounded bg-chip animate-pulse" />
-            <div className="h-3 w-1/2 rounded bg-chip animate-pulse" />
-            <div className="h-3 w-full rounded bg-chip animate-pulse" />
-          </div>
+    <div role="status" aria-label="正在搜索" className="poster-grid">
+      {Array.from({ length: 12 }, (_, index) => (
+        <div key={index} aria-hidden="true" className="min-w-0">
+          <div className="aspect-[2/3] rounded-xl bg-chip animate-pulse" />
+          <div className="mt-3 h-4 w-3/4 rounded bg-chip animate-pulse" />
+          <div className="mt-2 h-3 w-1/2 rounded bg-chip animate-pulse" />
         </div>
       ))}
     </div>

@@ -54,4 +54,20 @@ describe('推荐展示', () => {
     expect(html).toContain('剧集');
     expect(html).toContain('评分 8.4');
   });
+
+  it('分类网格保留全部影片及原筛选，不混入首页轮播或横向片单', () => {
+    const html = render({ layout: 'grid' });
+    expect(html.match(/role="listitem"/g)).toHaveLength(items.length);
+    expect(html).toContain('原有筛选');
+    expect(html).toContain('poster-grid');
+    expect(html).not.toContain('精选影视');
+    expect(html).not.toContain('poster-track');
+  });
+
+  it('分类加载、空和错误状态继续可用', () => {
+    expect(render({ layout: 'grid', loading: true, items: [] })).toContain('正在加载片单');
+    expect(render({ layout: 'grid', items: [] })).toContain('该分类暂无推荐内容');
+    expect(render({ layout: 'grid', error: true })).toContain('重试');
+  });
+
 });

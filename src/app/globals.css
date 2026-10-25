@@ -297,7 +297,7 @@ html {
   .poster-track { grid-auto-columns: calc((100% - 2rem) / 3.5); }
 }
 
-@media (min-width: 768px) {
+@media (min-width: 1024px) {
   .cinema-hero { margin-top: -65px; padding-top: 65px; }
 }
 
@@ -313,4 +313,31 @@ html {
 
 @media (prefers-reduced-motion: reduce) {
   .hero-step, .shelf-step { transition: none; }
+}
+
+/* 分类与搜索使用同一海报网格，首页仍使用横向片单。 */
+.poster-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.75rem .875rem;
+}
+
+[aria-labelledby="search-dialog-title"] [role="listbox"] {
+  max-height: min(48dvh, 400px);
+}
+
+@media (min-width: 640px) {
+  .poster-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2rem 1.25rem; }
+}
+@media (min-width: 768px) {
+  .poster-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) {
+  .poster-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+@media (min-width: 1280px) {
+  .poster-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+@media (min-width: 1536px) {
+  .poster-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 }

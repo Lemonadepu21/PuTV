@@ -12,6 +12,7 @@ PuTv 在保留上游功能的基础上调整界面和移动端操作。项目仍
 - IPTV / M3U 直播、频道分组、EPG、收藏与最近观看。
 - 观看历史、续播、搜索历史、自动连播、片段跳过及广告切片过滤。
 - 深色、浅色、跟随系统三态主题，支持键盘操作。
+- 电影、剧集、动漫分类网格；顶栏搜索浮层支持 Enter、Esc、Ctrl / ⌘ + K，保留最近搜索及跨源选源。
 - 首页全宽精选区、手动切换、横向海报片单，保留原推荐来源及筛选。豆瓣周榜排除明确标记为预告、待上映、院线热映的条目；不逐部查询片源，推荐不代表正片一定可用。
 
 项目不内置视频源，不存储或提供视频文件。观看内容来自部署者自行配置的第三方接口；请确认你有权访问相应内容。
@@ -125,12 +126,15 @@ src/app/                    页面路由、API、全局样式与页面 metadata
 src/components/header.tsx   顶部导航与历史、设置等入口
 src/components/theme.tsx    三态主题与 libretv-theme 持久化
 src/components/douban-section.tsx  推荐来源与展示
+src/components/search-dialog.tsx   搜索浮层，复用原搜索历史与焦点管理
 src/components/video-card.tsx      影视卡片与结果聚合展示
 src/components/detail-modal.tsx    现有影视详情弹窗
 src/components/player-shell.tsx    点播播放器
 src/components/live-player.tsx     直播播放器
 src/lib/                    状态、数据、请求、解析与测试
 ```
+
+分类入口使用 `/?category=movie`、`/?category=tv`、`/?category=anime`，搜索仍使用 `/?s=片名`。电影 / 剧集在影视榜单偏好下沿用对应榜单，其他偏好下复用豆瓣标签；动漫复用 Bangumi 日历。浏览分类不会修改首页来源偏好，首页推荐开关只控制首页展示。
 
 V1 的阶段范围与验收记录见 [实施记录](docs/IMPLEMENTATION.md)。推荐、搜索、认证、源管理与播放业务继续复用原实现；界面更新不应增加新的元数据接口。
 

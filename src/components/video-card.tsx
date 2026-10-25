@@ -85,6 +85,7 @@ export function AggregatedCard({
   const customImageProxy = useAppStore((s) => s.customImageProxy);
   const [imgFailed, setImgFailed] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const showImg = !!group.pic && !imgFailed;
 
   const multi = group.items.length > 1;
@@ -145,13 +146,14 @@ export function AggregatedCard({
   return (
     <div
       ref={inViewRef}
-      className={cn('card', !multi && 'hover:scale-[1.02] hover:shadow-md', multi && expanded && 'ring-1 ring-accent/40')}
+      className="min-w-0"
     >
       {/* 不用 h-full：展开面板需要撑高卡片，等高裁切会让面板不可见 */}
       <div
-        className="flex h-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+        className="group rounded-xl cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         role="button"
         tabIndex={0}
+        aria-label={`${group.name}${group.year ? `，${group.year}` : ''}，${multi ? `${group.items.length} 个来源` : group.items[0].sourceName}`}
         aria-expanded={multi ? expanded : undefined}
         onClick={activate}
         onKeyDown={(e) => {
@@ -161,44 +163,26 @@ export function AggregatedCard({
           }
         }}
       >
-        {showImg ? (
-          <div className="relative flex-shrink-0 w-[105px] sm:w-[120px] aspect-[2/3] bg-chip">
-            <SmartImage
-              url={group.pic}
-              mode={imageProxyMode}
-              customProxy={customImageProxy}
-              alt={group.name}
-              className="absolute inset-0 h-full w-full object-cover"
-              onExhausted={() => setImgFailed(true)}
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-black/30 to-transparent" />
-            {multi && (
-              <span className="absolute top-1.5 left-1.5 tag bg-black/70 text-accent font-medium">
-                {group.items.length} 源
-              </span>
-            )}
-          </div>
-        ) : (
-          <div className="relative flex-shrink-0 w-[105px] sm:w-[120px] aspect-[2/3] bg-chip flex items-center justify-center">
-            <svg className="w-8 h-8 text-faint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 4v16m10-16v16M3 6a1 1 0 011-1h1a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V6zm4 0a1 1 0 011-1h1a1 1 0 011 1v12a1 1 0 01-1 1h-1a1 1 0 01-1-1V6zm8 0a1 1 0 011-1h1a1 1 0 011 1v12a1 1 0 01-1 1h-1a1 1 0 01-1-1V6zm4 0a1 1 0 011-1h1a1 1 0 011 1v12a1 1 0 01-1 1h-1a1 1 0 01-1-1V6z" />
-            </svg>
-            {multi && (
-              <span className="absolute top-1.5 left-1.5 tag bg-black/70 text-accent font-medium">
-                {group.items.length} 源
-              </span>
-            )}
-          </div>
-        )}
+        <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-chip">
+          {showImg ? (
+            <>
+              {!loaded && <span aria-hidden="true" className="absolute inset-0 animate-pulse bg-chip" />}
+              <SmartImage url={group.pic} mode={imageProxyMode} customProxy={customImageProxy} alt=""
+                className="absolute inset-0 h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.025] motion-reduce:transform-none"
+                onLoad={() => setLoaded(true)} onExhausted={() => setImgFailed(true)} />
+            </>
+          ) : <span className="absolute inset-0 flex items-center justify-center text-xs text-faint">暂无海报</span>}
+          {multi && <span className="absolute left-2 top-2 rounded-md bg-black/75 px-2 py-1 text-xs font-medium text-white">{group.items.length} 源</span>}
+        </div>
 
-        <div className="p-2.5 flex flex-col flex-grow min-w-0">
+        <div className="pt-3 flex flex-col min-w-0">
           <div className="flex-grow">
-            <h3 className="font-semibold text-sm text-content mb-1.5 line-clamp-2" title={group.name}>
+            <h3 className="min-h-[2.8em] font-medium text-sm leading-snug text-content mb-1.5 line-clamp-2" title={group.name}>
               {group.name}
             </h3>
             <div className="flex flex-wrap gap-1 mb-1.5">
               {group.typeName && <span className="tag bg-accent/15 text-accent">{group.typeName}</span>}
-              {group.year && <span className="tag bg-purple-500/15 text-purple-600 dark:text-purple-300">{group.year}</span>}
+              {group.year && <span className="tag bg-chip text-muted">{group.year}</span>}
               {adult && <span className="tag bg-pink-500/15 text-pink-600 dark:text-pink-400">(18+)</span>}
               {/* 单源卡片没有展开列表，画质只能在这里露出；失败态可点重试 */}
               {singleKey && (
@@ -209,10 +193,10 @@ export function AggregatedCard({
                 />
               )}
             </div>
-            <p className="text-xs text-muted line-clamp-2 mb-2">{group.remarks || '暂无介绍'}</p>
+            <p className="text-xs text-muted truncate mb-2">{group.remarks || '暂无介绍'}</p>
           </div>
-          <div className="flex items-center justify-between gap-1.5 mt-auto pt-1.5 border-t border-line">
-            <span className="tag bg-chip text-muted truncate max-w-[80%]">
+          <div className="flex flex-wrap items-center justify-between gap-1.5">
+            <span className="text-xs text-muted truncate max-w-full">
               {multi ? `${group.items.length} 个来源` : group.items[0].sourceName}
             </span>
             {multi && (
@@ -246,8 +230,8 @@ export function AggregatedCard({
       </div>
 
       {multi && expanded && (
-        <div className="border-t border-line p-2.5 animate-fade-in">
-          <div className="flex items-baseline justify-between gap-2 mb-1.5">
+        <div className="mt-3 rounded-xl border border-line bg-surface p-3 animate-fade-in">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 mb-2">
             <p className="text-[10px] text-faint">
               选择来源
               {sharedRemarks ? ` · 均 ${sharedRemarks}` : ''}
@@ -265,11 +249,6 @@ export function AggregatedCard({
                 </p>
               ))}
           </div>
-          {/*
-            单列全宽行：两列在卡片实际宽度（约 330px）下每列只剩 148px，
-            源名必截断，且源数为奇数时必然留半行空。一行内「源名 / 画质 / 集数 / 播放」
-            四段排开，信息密度更高也更容易纵向扫读。
-          */}
           <div className="flex flex-col gap-1.5">
             {sortedItems.map((item) => {
               const itemKey = qualityKey(item.sourceKey, item.vodId);
@@ -281,7 +260,7 @@ export function AggregatedCard({
                   role="button"
                   tabIndex={0}
                   className={cn(
-                    'group flex w-full min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2',
+                    'group flex flex-wrap w-full min-w-0 items-center gap-x-2 gap-y-1.5 rounded-lg border px-2.5 py-2',
                     'text-xs transition-all cursor-pointer',
                     'bg-chip hover:border-accent hover:bg-accent/10',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50',
@@ -301,7 +280,7 @@ export function AggregatedCard({
                   }}
                   aria-label={`使用 ${item.sourceName} 播放${label && !sharedRemarks ? `，${label}` : ''}`}
                 >
-                  <span className="font-medium text-content truncate flex-1 min-w-0">{item.sourceName}</span>
+                  <span className="basis-full font-medium text-content truncate min-w-0">{item.sourceName}</span>
                   <QualityBadge
                     entry={qualities[itemKey]}
                     loading={probing[itemKey]}
@@ -311,7 +290,7 @@ export function AggregatedCard({
                   />
                   {/* 集数一致时已提到表头，逐行不再重复 */}
                   {!sharedRemarks && label && (
-                    <span className="text-faint shrink-0 tabular-nums">{label}</span>
+                    <span className="min-w-0 flex-1 truncate text-faint tabular-nums">{label}</span>
                   )}
                   <svg
                     className="w-3.5 h-3.5 text-accent shrink-0 transition-transform group-hover:translate-x-0.5"

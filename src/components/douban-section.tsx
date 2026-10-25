@@ -6,6 +6,7 @@ import { api } from '@/lib/client-api';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import type { DoubanItem } from '@/lib/types';
+import type { BrowseCategory } from '@/lib/browse-categories';
 import { RecommendationLayout } from './recommendation-layout';
 
 const MOVIE_TAGS = ['热门', '最新', '经典', '豆瓣高分', '冷门佳片', '华语', '欧美', '韩国', '日本', '动画'];
@@ -23,12 +24,20 @@ export function RecommendSection({ onPick }: { onPick: (title: string) => void }
   return <DoubanView onPick={onPick} />;
 }
 
+/** 分类只复用当前推荐接口，首页来源偏好不因导航而改变。 */
+export function CategorySection({ category, onPick }: { category: BrowseCategory; onPick: (title: string) => void }) {
+  const source = useAppStore((s) => s.recommendSource);
+  if (category === 'anime') return <BangumiView layout="grid" onPick={onPick} />;
+  if (source === 'hot-list') return <HotListView category={category} layout="grid" onPick={onPick} />;
+  return <DoubanView category={category} layout="grid" onPick={onPick} />;
+}
+
 /**
  * 豆瓣推荐：影视切换 + 标签筛选。
  * 数据一次拉全（50 条），横向列表复用原条目与懒加载海报。
  */
-function DoubanView({ onPick }: { onPick: (title: string) => void }) {
-  const [type, setType] = useState<'movie' | 'tv'>('movie');
+function DoubanView({ onPick, category, layout = 'home' }: { onPick: (title: string) => void; category?: 'movie' | 'tv'; layout?: 'home' | 'grid' }) {
+  const [type, setType] = useState<'movie' | 'tv'>(category || 'movie');
   const [tag, setTag] = useState('热门');
 
   const query = useQuery({
@@ -47,11 +56,12 @@ function DoubanView({ onPick }: { onPick: (title: string) => void }) {
 
   return (
     <RecommendationLayout
+      layout={layout}
       title={`${tag}${type === 'movie' ? '电影' : '剧集'}`}
       items={items} loading={query.isLoading} error={query.isError}
       onRetry={() => { void query.refetch(); }} onPick={onPick}
     >
-      <div className="flex items-center justify-between mb-3">
+      {!category && <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <div className="flex bg-chip rounded-lg p-0.5">
             <TypeButton active={type === 'movie'} onClick={() => switchType('movie')}>
@@ -62,7 +72,7 @@ function DoubanView({ onPick }: { onPick: (title: string) => void }) {
             </TypeButton>
           </div>
         </div>
-      </div>
+      </div>}
 
       <div className="flex flex-wrap gap-1.5">
         {tags.map((t) => (
@@ -84,7 +94,7 @@ function DoubanView({ onPick }: { onPick: (title: string) => void }) {
 }
 
 /** Bangumi 每日放送：星期筛选，一次拉全量无分页 */
-function BangumiView({ onPick }: { onPick: (title: string) => void }) {
+function BangumiView({ onPick, layout = 'home' }: { onPick: (title: string) => void; layout?: 'home' | 'grid' }) {
   const [weekday, setWeekday] = useState<number | 'all'>('all');
 
   const query = useQuery({
@@ -101,6 +111,7 @@ function BangumiView({ onPick }: { onPick: (title: string) => void }) {
 
   return (
     <RecommendationLayout
+      layout={layout}
       title={weekday === 'all' ? '新番放送' : `${WEEKDAYS[weekday - 1]}新番`}
       items={items} loading={query.isLoading} error={query.isError}
       onRetry={() => { void query.refetch(); }} onPick={onPick}
@@ -129,8 +140,11 @@ const HOT_LISTS = [
 ];
 
 /** 影视热榜（60s API）：豆瓣五个周榜 + 百度热播剧，chips 切换 */
-function HotListView({ onPick }: { onPick: (title: string) => void }) {
-  const [listId, setListId] = useState(HOT_LISTS[0].id);
+function HotListView({ onPick, category, layout = 'home' }: { onPick: (title: string) => void; category?: 'movie' | 'tv'; layout?: 'home' | 'grid' }) {
+  const lists = category === 'movie' ? HOT_LISTS.slice(0, 1) : category === 'tv'
+    ? HOT_LISTS.filter((list) => ['douban_tv_chinese', 'douban_tv_global', 'baidu_teleplay'].includes(list.id))
+    : HOT_LISTS;
+  const [listId, setListId] = useState(lists[0].id);
 
   const query = useQuery({
     queryKey: ['hot-list', listId],
@@ -141,12 +155,13 @@ function HotListView({ onPick }: { onPick: (title: string) => void }) {
 
   return (
     <RecommendationLayout
-      title={HOT_LISTS.find((list) => list.id === listId)!.label}
+      layout={layout}
+      title={lists.find((list) => list.id === listId)!.label}
       items={items} loading={query.isLoading} error={query.isError}
       onRetry={() => { void query.refetch(); }} onPick={onPick}
     >
       <div className="flex flex-wrap gap-1.5">
-        {HOT_LISTS.map((l) => (
+        {lists.map((l) => (
           <ChipButton key={l.id} active={listId === l.id} onClick={() => setListId(l.id)}>
             {l.label}
           </ChipButton>
