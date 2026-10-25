@@ -1,224 +1,312 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { api, onUnauthorized, STATUS_QUERY_KEY } from '@/lib/client-api';
+import {
+  api,
+  onUnauthorized,
+  reloadIdentity,
+  STATUS_QUERY_KEY,
+} from '@/lib/client-api';
 import { applyEnvPresets } from '@/lib/subscription-sync';
-import type { AuthStatusResponse } from '@/lib/types';
-import { useToast } from './toast';
+import { useAppStore, hydrateLiveProbeResults } from '@/lib/store';
+import { setLocalIdentity } from '@/lib/db';
+import { setLocalStorageScope } from '@/lib/persist-storage';
+import type {
+  AuthStatusResponse,
+  PublicAccount,
+  ViewingProfile,
+} from '@/lib/types';
+import { AccountScreens, ProfileChooser } from './account-screens';
+import { GlobalDownloadManager } from './download-manager';
+import { ThemeToggle } from './theme';
 
-/**
- * 认证上下文：
- * - 页面加载时查询 /api/status 判断会话有效性；
- * - 任何 API 返回 401/503 时全局打开登录框（客户端 API 层统一触发，不再散落检查）。
- */
-
-type SetupRequired = boolean;
-
+type Screen = 'watch' | 'select' | 'manage' | 'password' | 'admin';
 interface AuthContextValue {
   checked: boolean;
   verified: boolean;
-  /** 服务器未设置 PASSWORD，需要管理员配置 */
-  setupRequired: SetupRequired;
-  /** /api/status 返回的应用版本（构建时从 package.json 注入） */
+  setupRequired: boolean;
   version: string | null;
+  account: PublicAccount | null;
+  profile: ViewingProfile | null;
+  profiles: ViewingProfile[];
   openLogin: () => void;
   logout: () => Promise<void>;
+  refresh: () => Promise<void>;
+  setScreen: (screen: Screen) => void;
 }
-
 const AuthContext = createContext<AuthContextValue>({
   checked: false,
   verified: false,
   setupRequired: false,
   version: null,
+  account: null,
+  profile: null,
+  profiles: [],
   openLogin: () => {},
   logout: async () => {},
+  refresh: async () => {},
+  setScreen: () => {},
 });
-
-export function useAuth(): AuthContextValue {
+export function useAuth() {
   return useContext(AuthContext);
 }
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [checked, setChecked] = useState(false);
-  const [verified, setVerified] = useState(false);
-  const [setupRequired, setSetupRequired] = useState(false);
-  const [version, setVersion] = useState<string | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-
-  // 与 Providers 共用同一 query key 与缓存，避免 /api/status 被请求两次
+  const [status, setStatus] = useState<AuthStatusResponse | null>(null),
+    [checked, setChecked] = useState(false),
+    [error, setError] = useState(''),
+    [screen, setScreen] = useState<Screen>('watch');
+  const client = useQueryClient();
+  const initializedScope = useRef<string | null>(null);
+  const refresh = useCallback(async () => {
+    const next = await api.status();
+    if (next.account && next.profile) {
+      const scope = `${next.account.id}:${next.profile.id}`;
+      if (initializedScope.current && initializedScope.current !== scope) {
+        window.location.replace('/');
+        return;
+      }
+      if (initializedScope.current !== scope) {
+        setLocalIdentity(next.account.id, next.profile.id);
+        setLocalStorageScope(scope);
+        await useAppStore.persist.rehydrate();
+        await hydrateLiveProbeResults();
+        await applyEnvPresets(next);
+        initializedScope.current = scope;
+      }
+    }
+    client.setQueryData(STATUS_QUERY_KEY, next);
+    setStatus(next);
+    setChecked(true);
+    setError('');
+  }, [client]);
   useEffect(() => {
-    let cancelled = false;
-    queryClient
-      .fetchQuery({ queryKey: STATUS_QUERY_KEY, queryFn: () => api.status() })
-      .then((s) => {
-        if (cancelled) return;
-        setVerified(s.verified);
-        setSetupRequired(!s.passwordRequired);
-        setVersion(s.version);
-        setChecked(true);
-      })
-      .catch(() => {
-        if (!cancelled) setChecked(true);
-      });
-    return () => {
-      cancelled = true;
+    refresh().catch(() => {
+      setError('无法连接账号服务，请检查服务器配置');
+      setChecked(true);
+    });
+  }, [refresh]);
+  useEffect(() => {
+    const changed = (event: StorageEvent) => {
+      if (event.key === 'putv-identity-change') window.location.replace('/');
     };
-  }, [queryClient]);
-
+    window.addEventListener('storage', changed);
+    return () => window.removeEventListener('storage', changed);
+  }, []);
   useEffect(
     () =>
-      onUnauthorized((event) => {
-        const setup = (event as CustomEvent).detail === 'setup';
-        setSetupRequired(setup);
-        setVerified(false);
-        setModalOpen(true);
+      onUnauthorized(() => {
+        client.clear();
+        setStatus((previous) =>
+          previous
+            ? {
+                ...previous,
+                verified: false,
+                account: null,
+                profile: null,
+                profiles: [],
+              }
+            : null
+        );
+        setScreen('watch');
       }),
-    []
+    [client]
   );
-
-  const openLogin = useCallback(() => setModalOpen(true), []);
-
-  const logout = useCallback(async () => {
-    try {
-      await api.logout();
-    } finally {
-      setVerified(false);
-      toast('已退出登录', 'info');
-    }
-  }, [toast]);
-
-  const handleLoginSuccess = useCallback(async () => {
-    setVerified(true);
-    setSetupRequired(false);
-    setModalOpen(false);
-    // 登录前以 401 失败的查询（如豆瓣推荐）需要重新拉取
-    queryClient.invalidateQueries();
-    toast('验证成功', 'success');
-    // 预置订阅（DEFAULT_SUBSCRIPTIONS）的首屏同步发生在登录之前，会 401 静默失败，
-    // 这里用缓存中的 /api/status 补跑一次（缓存缺失时回落为一次请求）
-    try {
-      const cached = queryClient.getQueryData<AuthStatusResponse>(STATUS_QUERY_KEY);
-      const status =
-        cached ??
-        (await queryClient.fetchQuery<AuthStatusResponse>({
-          queryKey: STATUS_QUERY_KEY,
-          queryFn: () => api.status(),
-          staleTime: 0,
-        }));
-      if (status) await applyEnvPresets(status, { verified: true });
-    } catch {
-      // 补拉预置数据失败不影响登录后的正常使用
-    }
-  }, [toast, queryClient]);
-
+  useEffect(() => {
+    if (!status?.verified) return;
+    const timer = setInterval(() => {
+      refresh().catch(() => {});
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [status?.verified, refresh]);
+  const logout = async () => {
+    await api.logout();
+    client.clear();
+    reloadIdentity();
+  };
+  const account = status?.account || null,
+    profile = status?.profile || null;
+  const verified = Boolean(account && profile);
   return (
-    <AuthContext.Provider value={{ checked, verified, setupRequired, version, openLogin, logout }}>
-      {children}
-      {modalOpen && (
-        <LoginModal
-          setupRequired={setupRequired}
-          onSuccess={handleLoginSuccess}
-          onClose={() => setModalOpen(false)}
-        />
+    <AuthContext.Provider
+      value={{
+        checked,
+        verified,
+        setupRequired: false,
+        version: status?.version || null,
+        account,
+        profile,
+        profiles: status?.profiles || [],
+        openLogin: () => {
+          refresh().catch(() => {});
+        },
+        logout,
+        refresh,
+        setScreen,
+      }}
+    >
+      {account && profile && <GlobalDownloadManager />}
+      {!checked ? (
+        <div
+          role="status"
+          className="flex min-h-screen items-center justify-center text-muted"
+        >
+          正在连接…
+        </div>
+      ) : error ? (
+        <div className="m-auto max-w-md p-8">
+          <p role="alert" className="text-danger">
+            {error}
+          </p>
+          <button
+            className="btn-primary mt-4"
+            onClick={() => refresh().catch(() => {})}
+          >
+            重试
+          </button>
+        </div>
+      ) : !account ? (
+        <Login registrationEnabled={status?.registrationEnabled === true} />
+      ) : (!profile && screen === 'watch') || screen === 'select' ? (
+        <ProfileChooser />
+      ) : screen !== 'watch' ? (
+        <AccountScreens screen={screen} />
+      ) : (
+        children
       )}
     </AuthContext.Provider>
   );
 }
-
-function LoginModal({
-  setupRequired,
-  onSuccess,
-  onClose,
-}: {
-  setupRequired: boolean;
-  onSuccess: () => void;
-  onClose: () => void;
-}) {
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
-
-  const submit = async () => {
-    if (!password.trim() || loading) return;
-    setLoading(true);
+function Login({ registrationEnabled }: { registrationEnabled: boolean }) {
+  const [register, setRegister] = useState(false),
+    [username, setUsername] = useState(''),
+    [password, setPassword] = useState(''),
+    [confirmPassword, setConfirmPassword] = useState(''),
+    [invitation, setInvitation] = useState(''),
+    [loading, setLoading] = useState(false),
+    [error, setError] = useState('');
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (loading) return;
     setError('');
+    if (register && password !== confirmPassword) {
+      setError('两次输入的密码不一致');
+      return;
+    }
+    setLoading(true);
     try {
-      await api.login(password);
-      onSuccess();
+      if (register)
+        await api.register({ username, password, confirmPassword, invitation });
+      else await api.login(username, password);
+      reloadIdentity();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '验证失败';
-      setError(msg === '需要登录' ? '密码错误' : msg);
-      setPassword('');
-      inputRef.current?.focus();
+      setError(
+        err instanceof Error && err.message !== '需要登录'
+          ? err.message
+          : '用户名或密码错误，或账号已停用'
+      );
     } finally {
       setLoading(false);
     }
   };
-
   return (
-    <div
-      className="fixed inset-0 z-[95] flex items-center justify-center bg-black/80 animate-fade-in"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        className="bg-surface-raised rounded-xl p-6 w-full max-w-sm mx-4 shadow-2xl"
-        role="dialog"
-        aria-modal="true"
-        aria-label={setupRequired ? '需要配置密码' : '访问验证'}
-      >
-        {setupRequired ? (
-          <>
-            <h2 className="text-lg font-semibold text-content mb-3">需要配置密码</h2>
-            <p className="text-sm text-muted leading-relaxed">
-              为确保安全，必须设置 <code className="text-accent">PASSWORD</code> 环境变量才能使用本服务。
-              请联系管理员在部署配置中添加该变量后重启服务。
+    <main className="flex min-h-screen items-center justify-center p-4">
+      <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-6 sm:p-8">
+        <div className="mb-6 flex items-center justify-between">
+          <span className="text-xl font-semibold">PuTV</span>
+          <ThemeToggle />
+        </div>
+        <h1 className="mb-6 text-2xl font-semibold">
+          {register ? '创建账号' : '登录'}
+        </h1>
+        <form onSubmit={submit} className="space-y-4">
+          <label className="block text-sm">
+            用户名
+            <input
+              required
+              name="username"
+              autoComplete="username"
+              minLength={3}
+              maxLength={32}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="input mt-2 w-full"
+            />
+          </label>
+          <label className="block text-sm">
+            密码
+            <input
+              required
+              name="password"
+              type="password"
+              autoComplete={register ? 'new-password' : 'current-password'}
+              minLength={8}
+              maxLength={128}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="input mt-2 w-full"
+            />
+          </label>
+          {register && (
+            <>
+              <label className="block text-sm">
+                确认密码
+                <input
+                  required
+                  name="confirmPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={8}
+                  maxLength={128}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="input mt-2 w-full"
+                />
+              </label>
+              <label className="block text-sm">
+                邀请码
+                <input
+                  required
+                  name="invitation"
+                  type="password"
+                  autoComplete="off"
+                  maxLength={512}
+                  value={invitation}
+                  onChange={(e) => setInvitation(e.target.value)}
+                  className="input mt-2 w-full"
+                />
+              </label>
+            </>
+          )}
+          {error && (
+            <p role="alert" className="text-sm text-danger">
+              {error}
             </p>
-          </>
-        ) : (
-          <>
-            <h2 className="text-lg font-semibold text-content mb-1">访问验证</h2>
-            <p className="text-sm text-muted mb-4">请输入密码继续访问</p>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                submit();
-              }}
-            >
-              <input
-                ref={inputRef}
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input w-full"
-                placeholder="密码"
-                autoComplete="current-password"
-              />
-              {error && <p className="mt-2 text-sm text-danger">{error}</p>}
-              <button type="submit" className="btn-primary w-full mt-4" disabled={loading || !password.trim()}>
-                {loading ? '验证中...' : '进入'}
-              </button>
-            </form>
-          </>
+          )}
+          <button className="btn-primary min-h-11 w-full" disabled={loading}>
+            {loading ? '正在提交…' : register ? '创建账号' : '登录'}
+          </button>
+        </form>
+        {registrationEnabled && (
+          <button
+            className="mt-5 text-sm text-accent underline underline-offset-4"
+            onClick={() => {
+              setRegister(!register);
+              setError('');
+            }}
+          >
+            {register ? '已有账号，去登录' : '使用邀请码注册'}
+          </button>
         )}
       </div>
-    </div>
+    </main>
   );
 }

@@ -10,16 +10,26 @@ services:
     restart: unless-stopped
     ports:
       - "${PUTV_PORT:-8080}:8080"
-    # 无状态服务：观看历史在浏览器 IndexedDB、设置在 localStorage，无需挂载卷
+    volumes:
+      - putv-data:/app/data
+    # 账号、会话及头像持久化；观看记录仍保存在浏览器
     environment:
-      # 必填：访问密码（在 .env 中设置，缺失时 compose 启动即报错提醒）
+      # 必填：注册邀请码，仅服务端使用
       - PASSWORD=${PASSWORD:?请在 .env 中设置 PASSWORD}
+      - SQLITE_PATH=/app/data/putv.sqlite
+      - REGISTRATION_ENABLED=${REGISTRATION_ENABLED:-true}
+      - SESSION_DAYS=${SESSION_DAYS:-30}
+      - MAX_PROFILES=${MAX_PROFILES:-8}
+      - APP_ORIGIN=${APP_ORIGIN:?请在 .env 中配置站点 HTTPS 地址}
+      - ALLOW_INSECURE_HTTP=${ALLOW_INSECURE_HTTP:-false}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      - PROXY_SECRET=${PROXY_SECRET:-}
       - DEFAULT_SOURCES=${DEFAULT_SOURCES:-[]}
       - DEFAULT_LIVE_SOURCES=${DEFAULT_LIVE_SOURCES:-[]}
       - DEFAULT_SUBSCRIPTIONS=${DEFAULT_SUBSCRIPTIONS:-[]}
-      # 可选：会话/代理签名密钥（多实例部署建议显式设置：openssl rand -hex 32）
+      # 兼容保留 PROXY_SECRET；账号会话不再由邀请码或代理密钥派生
       # - PROXY_SECRET=your-secret
-      # 可选：Cookie Secure 策略覆盖（true=强制开启 / false=强制关闭；不设置时按请求协议自动推导，HTTP 部署无需配置）
+      # 可选：COOKIE_SECURE=true 强制 Secure；HTTPS / 默认生产模式始终使用 Secure
       # - COOKIE_SECURE=true
       # 可选：预置采集站（JSON 数组），用户端自动出现且默认勾选
       # - DEFAULT_SOURCES=[{"name":"示例源","url":"https://example.com/api.php/provide/vod"}]
@@ -43,3 +53,6 @@ services:
       # - USER_AGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36
       # 可选：影视榜单推荐源（60s API）实例地址，官方公共实例有限流
       # - 60S_API_BASE=https://60s.crystelf.top
+
+volumes:
+  putv-data:

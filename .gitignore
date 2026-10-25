@@ -12,3 +12,12 @@ vitest-results.json
 .zcode/
 .codebuddy/
 generated-images/
+
+# 服务端身份与头像持久化数据
+data/
+*.sqlite*
+*.db
+avatars/
+*.db-wal
+*.db-shm
+.next-v2/

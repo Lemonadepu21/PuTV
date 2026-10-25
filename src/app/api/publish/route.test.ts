@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST } from './route';
-import { SESSION_COOKIE, signSession } from '@/lib/auth';
+import { SESSION_COOKIE } from '@/lib/auth';
+import { signSession } from '@/server/test-session';
 
 /**
  * 发布接口单测：登录守卫、字段白名单与条数上限。
@@ -23,7 +24,7 @@ vi.mock('@/lib/source-list-publish', () => ({
 }));
 
 function makeRequest(body: unknown, options?: { authenticated?: boolean }): Request {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'Origin': 'https://local.test' };
   if (options?.authenticated !== false) {
     headers.cookie = `${SESSION_COOKIE}=${signSession().token}`;
   }

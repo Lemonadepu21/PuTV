@@ -124,8 +124,15 @@ export interface BangumiCalendarResponse {
   days: BangumiCalendarDay[];
 }
 
+export interface PublicAccount { id: string; username: string; role: 'admin' | 'user'; status: 'active' | 'disabled'; }
+export interface ViewingProfile { id: string; account_id: string; name: string; avatar: string; is_default: number; }
 export interface AuthStatusResponse {
-  /** 服务器是否配置了 PASSWORD */
+  account?: PublicAccount | null;
+  profile?: ViewingProfile | null;
+  profiles?: ViewingProfile[];
+  registrationEnabled?: boolean;
+  expiresAt?: number | null;
+  /** 是否要求账号认证（兼容旧版字段名） */
   passwordRequired: boolean;
   /** 当前会话是否已验证 */
   verified: boolean;

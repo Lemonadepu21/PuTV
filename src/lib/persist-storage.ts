@@ -12,6 +12,14 @@ export const PERSIST_KEY = 'libretv-settings';
 /** 节流窗口：搜索/测活等高频 set 合并为 800ms 一次落盘 */
 const THROTTLE_MS = 800;
 
+let identityScope = 'unassigned';
+export function setLocalStorageScope(scope: string) {
+  flushPendingPersist();
+  identityScope = scope;
+}
+export const localSettingsKey = () => scopedKey(PERSIST_KEY);
+const scopedKey = (name: string) => `putv:${identityScope}:${name}`;
+
 let timer: ReturnType<typeof setTimeout> | null = null;
 let pending: [string, string] | null = null;
 
@@ -24,7 +32,7 @@ function flush(): void {
   const [key, value] = pending;
   pending = null;
   try {
-    localStorage.setItem(key, value);
+    localStorage.setItem(scopedKey(key), value);
   } catch {
     // 配额不足 / 隐私模式下静默放弃持久化，内存态仍可用
   }
@@ -55,7 +63,7 @@ export function createThrottledStorage(): StateStorage {
   return {
     getItem: (name) => {
       try {
-        return localStorage.getItem(name);
+        return localStorage.getItem(scopedKey(name));
       } catch {
         return null;
       }
@@ -66,7 +74,7 @@ export function createThrottledStorage(): StateStorage {
     },
     removeItem: (name) => {
       try {
-        localStorage.removeItem(name);
+        localStorage.removeItem(scopedKey(name));
       } catch {
         // 忽略
       }

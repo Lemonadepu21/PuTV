@@ -44,16 +44,13 @@ export function onUnauthorized(handler: (event: CustomEvent) => void): () => voi
   return () => window.removeEventListener(UNAUTHORIZED_EVENT, wrapped);
 }
 
-/** 401/503 统一处理：分发全局事件打开登录框并抛 ApiError（普通与流式请求共用） */
+/** 401 统一处理：分发全局事件打开登录框并抛 ApiError（普通与流式请求共用） */
 function throwForAuthStatus(res: Response): void {
   if (res.status === 401) {
     window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
     throw new ApiError('需要登录', 401);
   }
-  if (res.status === 503) {
-    window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT, { detail: 'setup' }));
-    throw new ApiError('服务器未配置密码', 503);
-  }
+
 }
 
 /** NDJSON 流读取：按行解析 JSON 并回调，坏行跳过不影响其余结果 */
@@ -108,14 +105,9 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 export const api = {
   status: () => request<AuthStatusResponse>('/api/status'),
 
-  login: (password: string) =>
-    request<{ success: boolean }>('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
-    }),
-
-  logout: () => request<{ success: boolean }>('/api/auth', { method: 'DELETE' }),
+  login: (username: string, password: string) => request<{success:boolean}>('/api/auth/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})}),
+  register: (body: {username:string;password:string;confirmPassword:string;invitation:string}) => request<{success:boolean}>('/api/auth/register', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),
+  logout: () => request<{success:boolean}>('/api/auth/logout', {method:'POST'}),
 
   /**
    * 聚合搜索。传入 onSource 时走 /api/search?stream=1 的 NDJSON 流：
@@ -350,3 +342,13 @@ async function searchStream(
   }
 
 export type { SearchResponse, SearchResultItem };
+
+export function identityApi<T>(url:string, method='GET', body?:unknown):Promise<T> {
+  return request<T>(url,{method,...(body instanceof FormData ? {body} : body === undefined ? {} : {headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})});
+}
+
+/** Cookie 在同站标签页间共享，仅广播失效信号，不保存身份或令牌。 */
+export function reloadIdentity() {
+  try { localStorage.setItem('putv-identity-change', String(Date.now())); } catch { /* 隐私模式仍可刷新当前页 */ }
+  window.location.replace('/');
+}

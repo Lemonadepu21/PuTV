@@ -19,3 +19,12 @@ Dockerfile
 docker-compose.yml
 docs
 README.md
+
+# 服务端身份与头像持久化数据
+data/
+*.sqlite*
+*.db
+avatars/
+*.db-wal
+*.db-shm
+.next-v2/

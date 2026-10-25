@@ -8,6 +8,7 @@ import { SourceManagerDrawer } from './source-manager';
 import { HistoryPanel } from './history-panel';
 import { requestShowDownloadManager } from './download-manager';
 import { Icon } from './icon';
+import { AccountEntry } from './account-screens';
 import { SearchDialog } from './search-dialog';
 import { BROWSE_CATEGORIES, type BrowseCategory } from '@/lib/browse-categories';
 import { cn } from '@/lib/utils';
@@ -55,11 +56,11 @@ export function Header({ immersive = false, category, searchQuery, onSearch }: {
           scrolled ? 'border-line bg-page/95' : immersive ? 'cinema-header border-transparent bg-transparent' : 'border-transparent bg-page'
         )}
       >
-        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10 h-16 flex items-center gap-4 lg:gap-8">
+        <div className="max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-10 h-16 flex items-center gap-2 sm:gap-4 lg:gap-8">
           <Link href="/" aria-label="PuTV 首页" className="flex items-center gap-2.5 shrink-0 rounded-lg">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo.svg" alt="" className="w-8 h-8" />
-            <span className="text-xl font-semibold tracking-tight">PuTV</span>
+            <span className="hidden sm:inline text-xl font-semibold tracking-tight">PuTV</span>
           </Link>
 
           <nav aria-label="主导航" className="hidden lg:flex items-center gap-1 self-stretch">
@@ -85,6 +86,7 @@ export function Header({ immersive = false, category, searchQuery, onSearch }: {
             <IconButton label="设置" onClick={() => setSettingsOpen(true)}>
               <Icon name="gear" />
             </IconButton>
+            <AccountEntry />
           </nav>
         </div>
       </header>

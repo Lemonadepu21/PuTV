@@ -10,7 +10,9 @@
     "start": "next start --hostname 0.0.0.0 -p 8080",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "admin:create": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server --experimental-strip-types scripts/create-admin.ts",
+    "test:docker": "node scripts/test-docker.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.0",
@@ -24,6 +26,8 @@
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "server-only": "0.0.1",
+    "sharp": "0.35.4",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
@@ -41,5 +45,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/Lemonadepu21/putv.git"
+  },
+  "engines": {
+    "node": ">=22.13.0"
   }
 }

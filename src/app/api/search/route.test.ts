@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { POST } from './route';
-import { SESSION_COOKIE, signSession } from '@/lib/auth';
+import { SESSION_COOKIE } from '@/lib/auth';
+import { signSession } from '@/server/test-session';
 import type { SearchResponse, SearchStreamEvent, SourceConfig } from '@/lib/types';
 
 /**
@@ -41,7 +42,7 @@ function makeRequest(body: unknown, stream = false): Request {
   return new Request(`https://local.test/api/search${stream ? '?stream=1' : ''}`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/json', 'Origin': 'https://local.test',
       cookie: `${SESSION_COOKIE}=${token}`,
     },
     body: JSON.stringify(body),
@@ -193,19 +194,19 @@ describe('POST /api/search', () => {
     expect(await fresh.json()).toEqual({ list: [], failures: [] });
   });
 
-  it('未登录返回 401，未配置密码返回 503', async () => {
+  it('未登录返回 401，邀请码缺失不影响已有账号请求', async () => {
     vi.stubGlobal('fetch', vi.fn());
     const saved = process.env.PASSWORD;
     delete process.env.PASSWORD;
     try {
       const noPassword = await POST(makeRequest({ wd: 'x', sources: SOURCES }));
-      expect(noPassword.status).toBe(503);
+      expect(noPassword.status).toBe(200);
     } finally {
       process.env.PASSWORD = saved;
     }
     const noCookie = new Request('https://local.test/api/search', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Origin': 'https://local.test' },
       body: JSON.stringify({ wd: 'x', sources: SOURCES }),
     });
     const unauthorized = await POST(noCookie);

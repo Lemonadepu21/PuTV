@@ -97,6 +97,7 @@ export function HistoryPanel({ open, onClose }: { open: boolean; onClose: () => 
         ) : undefined
       }
     >
+      <p className="mb-3 text-xs text-muted">本设备当前档案的记录。旧版记录保留，暂未导入。</p>
       {!history ? (
         <LoadingState />
       ) : total === 0 ? (

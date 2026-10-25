@@ -2,10 +2,11 @@
 
 基于 [LibreTV](https://github.com/LibreSpark/LibreTV) 的影视聚合搜索与观看平台。使用 Next.js、React、TypeScript 与 Tailwind CSS，播放内核为 ArtPlayer / hls.js。
 
-PuTv 在保留上游功能的基础上调整界面和移动端操作。项目仍处于 V1 界面重构阶段，当前没有正式发布镜像或运行包；下方两种本地构建方式均从本仓库源码生成。
+PuTv 在保留上游功能的基础上调整界面和移动端操作。V1 界面已验收；V2 第一阶段加入独立账号、家庭观看档案和头像管理，已人工验收。当前没有正式发布镜像或运行包；下方两种部署方式均从源码构建。
 
 ## 功能与边界
 
+- 邀请码注册、独立账号登录、家庭观看档案、预设与自定义裁剪头像、管理员账号管理。
 - 跨源搜索、同名结果聚合、播放源切换与测速。
 - 豆瓣、Bangumi、影视榜单推荐，沿用上游获取逻辑。
 - 点播源管理、健康度检测、订阅导入与配置导入导出。
@@ -33,26 +34,26 @@ cd PuTv
 cp .env.example .env
 ```
 
-编辑 `.env`，将 `PASSWORD=change-me` 改为自己的访问密码，再启动：
+编辑 `.env`：设置私有注册邀请码 `PASSWORD` 和浏览器访问的 HTTPS 地址 `APP_ORIGIN`。由 HTTPS 反向代理或 Tailscale Funnel 转发到 8080，然后启动：
 
 ```sh
 docker compose up -d --build
 ```
 
-访问 `http://localhost:8080`；同一局域网的其他设备使用 `http://机器局域网IP:8080`。
+通过 `APP_ORIGIN` 设置的 HTTPS 地址访问。仅在可信局域网测试时，设置 `APP_ORIGIN=http://机器局域网IP:8080`、`ALLOW_INSECURE_HTTP=true`；这会关闭传输加密，应使用专门的测试密码。
 
 ```sh
 docker compose logs -f putv
 docker compose down
 ```
 
-对外端口由 `.env` 中的 `PUTV_PORT` 控制，容器内部仍使用 8080。镜像采用多阶段构建，运行进程使用非 root 用户；默认无需数据卷，用户数据存放在浏览器。
+对外端口由 `.env` 中的 `PUTV_PORT` 控制，容器内部仍使用 8080。镜像采用多阶段构建，运行进程使用非 root 用户；账号、会话与头像持久化在 `putv-data` 命名卷的 `/app/data`，不要执行 `docker compose down -v`，除非确认要删除账号及头像。观看记录仍保存在浏览器。
 
 以后发布的官方 PuTv 镜像将位于 `ghcr.io/lemonadepu21/putv`。首次正式发布前，请使用上面的本地构建命令，不要拉取 LibreTV 镜像替代 PuTv。
 
 ### 方式二：源码构建部署
 
-建议使用 **Node.js 22 LTS** 及 npm。
+使用 **Node.js 22.13+** 及 npm；SQLite 使用 Node 内置模块，头像处理使用 sharp。
 
 ```sh
 git clone https://github.com/Lemonadepu21/putv.git PuTv
@@ -60,7 +61,7 @@ cd PuTv
 cp .env.example .env
 ```
 
-编辑 `.env` 中的 `PASSWORD` 后执行：
+编辑 `.env` 中的注册邀请码 `PASSWORD` 和 HTTPS 地址 `APP_ORIGIN` 后执行：
 
 ```sh
 npm ci
@@ -68,7 +69,7 @@ npm run build
 npm start
 ```
 
-访问 `http://localhost:8080`。默认监听所有网络接口；在公网使用时请通过 HTTPS 反向代理或 Tailscale Funnel 接入，并保留密码保护。
+默认监听 8080，使用 HTTPS 反向代理或 Tailscale Funnel 接入，通过 `APP_ORIGIN` 访问。源码部署的数据默认在 `./data`，更新源码时必须保留该目录。可信局域网测试的 HTTP 配置见上文。
 
 需要更改源码部署的端口时：
 
@@ -97,12 +98,19 @@ systemctl --user enable --now putv
 
 | 变量 | 说明 |
 | --- | --- |
-| `PASSWORD` | 必填，网站访问密码 |
+| `PASSWORD` | 注册邀请码，仅服务端使用；已有用户登录无需它 |
+| `APP_ORIGIN` | 浏览器访问的完整源，例如 `https://putv.example.com`；生产环境需要 HTTPS |
+| `REGISTRATION_ENABLED` | 注册开关，默认 `true`，`false` 仅关闭注册 |
+| `SQLITE_PATH` | 源码默认 `./data/putv.sqlite`；Docker 使用 `/app/data/putv.sqlite` |
+| `SESSION_DAYS` | 会话有效期，默认 30 天，范围 1–365 |
+| `MAX_PROFILES` | 每账号档案上限，默认 8，范围 1–32 |
+| `ALLOW_INSECURE_HTTP` | 默认 `false`；仅局域网测试可显式启用 HTTP 例外 |
+| `COOKIE_SECURE` | `true` 强制 Secure；HTTPS 和默认生产模式始终使用 Secure |
 | `PUTV_PORT` | Docker 对外端口，默认 `8080` |
 | `DEFAULT_SOURCES` | 默认点播源 JSON 数组，默认 `[]` |
 | `DEFAULT_LIVE_SOURCES` | 默认直播源 JSON 数组，默认 `[]` |
 | `DEFAULT_SUBSCRIPTIONS` | 默认数据源订阅 JSON 数组，默认 `[]` |
-| `PROXY_SECRET` | 可选，会话及代理签名密钥；不设时从密码派生 |
+| `PROXY_SECRET` | 保留兼容配置，不再参与账号密码或会话生成 |
 
 默认点播源示例：
 
@@ -112,11 +120,28 @@ DEFAULT_SOURCES='[{"name":"示例源","url":"https://example.com/api.php/provide
 
 其他源可在网站的「设置 → 源管理」中添加。Compose 已传入表中三个默认源变量；若需额外环境变量，在 `docker-compose.yml` 的 `environment` 中明确添加。仅写在宿主机 `.env` 中的额外变量不会自动传给容器。
 
+### 管理员与升级
+
+普通注册用户始终为普通账号。首次管理员仅在服务器内部创建，密码交互输入不回显：
+
+```sh
+# Docker
+docker compose exec putv npm run admin:create
+# 源码（从项目目录运行，自动读取 .env / .env.local）
+npm run admin:create
+```
+
+已有管理员时会拒绝重复初始化，不覆盖原账号。管理员通过正常登录页面进入，右上角头像 → 账号管理。管理员可禁用 / 启用普通账号、重置普通账号密码，以及撤销指定账号全部会话。
+
+升级前备份完整持久化目录，停止服务后复制 SQLite 和头像；不要只复制正在写入的主数据库文件而漏掉 WAL。启动后按 `schema_migrations` 自动应用尚未执行的迁移，不重建数据库。备份应妥善保护，其中包含密码哈希和私人头像。完整说明见 [V2 身份系统](docs/V2-IDENTITY.md)。
+
 ### 数据与兼容性
 
-设置及主题存于 localStorage，历史、观看进度等数据存于 IndexedDB。为兼容上游，保留 `libretv-theme`、已有数据库名称和配置文件格式。PuTv 与 LibreTV 使用不同域名或端口时，浏览器会隔离两者的数据；不会自动迁移历史或实现跨设备同步。
+账号、档案、会话在服务端 SQLite；头像是同目录 `avatars/` 下的 WebP 文件。历史、进度、收藏和搜索历史仍只在本设备保存，不会上传或跨设备同步。
 
-可通过原有配置导出 / 导入功能搬迁受支持的数据。清除网站数据前请先导出需要保留的内容。
+旧 `libretv` IndexedDB 和 `libretv-settings` 配置保留原样，本阶段不自动导入。登录后的本地数据库和配置按账号、档案分别隔离；切换身份重新载入页面，其他同站标签页也会刷新。历史面板说明旧记录仍保留。主题继续使用 `libretv-theme`，下载、缓存偏好及设置面板标签仍为本设备公共偏好。
+
+升级后旧 `ltv_session` 无效，需要重新注册或由管理员初始化账号。新的登录密码与邀请码完全独立，轮换 `PASSWORD` 或 `PROXY_SECRET` 不会令现有会话失效。旧数据导入和服务端观看记录同步留待下一阶段。
 
 ## 开发与验证
 
@@ -151,7 +176,7 @@ src/lib/                    状态、数据、请求、解析与测试
 
 分类入口使用 `/?category=movie`、`/?category=tv`、`/?category=anime`，搜索仍使用 `/?s=片名`。电影 / 剧集在影视榜单偏好下沿用对应榜单，其他偏好下复用豆瓣标签；动漫复用 Bangumi 日历。浏览分类不会修改首页来源偏好，首页推荐开关只控制首页展示。
 
-V1 四个阶段已实现并经用户验收通过。开发侧完成自动化检查和 HTTP 检查，电视遥控器及容器实启仍未验证。阶段范围与验收记录见 [实施记录](docs/IMPLEMENTATION.md)。推荐、搜索、认证、源管理与播放业务继续复用原实现；界面更新不应增加新的元数据接口。
+V1 四个阶段已人工验收，见 [实施记录](docs/IMPLEMENTATION.md)。V2 身份模块、接口、数据兼容与验证记录见 [V2 身份系统](docs/V2-IDENTITY.md)。媒体搜索、推荐、源管理及播放核心继续复用原实现。
 
 ## 跟随上游更新
 
@@ -178,14 +203,14 @@ git merge v<版本>
 保留上游的两条发布链路，并将目标调整为本仓库：
 
 - `docker-publish`：构建 `linux/amd64` 与 `linux/arm64` 镜像，发布到本仓库的 GHCR。
-- `release-standalone`：生成 `putv-<版本>-standalone.tar.gz` 和 `SHA256SUMS`，可解压后通过 Node 运行。
+- `release-standalone`：生成 `putv-<版本>-linux-x64.tar.gz` / `linux-arm64.tar.gz` 和对应校验文件（Linux glibc；Alpine 使用 Docker），可解压后通过 Node 运行。
 
 工作流支持手动执行，也支持推送与 `package.json` 版本一致的 `v*` 标签。Fork 的 Actions 可能需要仓库管理员先启用；GHCR 包供其他人拉取时应设为公开。首次发布前需完成验证，不应仅因 UI 阶段验收通过就发布版本标签。
 
 构建包不应包含 `.env` 或密码。Docker 构建排除环境文件；standalone 发布工作流会删除产物中的环境文件并进行检查。运行已发布 standalone 包时通过环境变量传入密码及端口，例如：
 
 ```sh
-PASSWORD='你的访问密码' PORT=8080 HOSTNAME=0.0.0.0 node server.js
+PASSWORD='你的注册邀请码' APP_ORIGIN='https://putv.example.com' SQLITE_PATH='./data/putv.sqlite' PORT=8080 HOSTNAME=0.0.0.0 node server.js
 ```
 
 ## 开源与来源

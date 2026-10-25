@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { POST } from './route';
-import { SESSION_COOKIE, signSession } from '@/lib/auth';
+import { SESSION_COOKIE } from '@/lib/auth';
+import { signSession } from '@/server/test-session';
 
 /**
  * 测活接口单测：流式 NDJSON、codec 解析、内容校验、结果缓存、内网放行。
@@ -44,7 +45,7 @@ function makeRequest(urls: string[], stream: boolean): Request {
   return new Request(`https://local.test/api/live/probe${stream ? '?stream=1' : ''}`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/json', 'Origin': 'https://local.test',
       cookie: `${SESSION_COOKIE}=${token}`,
     },
     body: JSON.stringify({ urls }),
