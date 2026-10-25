@@ -1,5 +1,7 @@
 'use client';
 
+import { isBackKey } from '@/lib/keyboard-navigation';
+
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { SearchHistoryDropdown, useSearchHistory } from './search-history';
@@ -23,7 +25,7 @@ export function SearchDialog({ onClose, onSearch, initialQuery = '' }: {
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const keydown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (isBackKey(event)) { event.preventDefault(); onClose(); }
     };
     window.addEventListener('keydown', keydown);
     return () => {
@@ -46,7 +48,7 @@ export function SearchDialog({ onClose, onSearch, initialQuery = '' }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[max(1rem,12vh)]">
+    <div className="search-overlay fixed inset-0 z-50 flex items-start justify-center px-4">
       <div aria-hidden="true" className="absolute inset-0 bg-black/65" onClick={onClose} />
       <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="search-dialog-title" tabIndex={-1} className="relative w-full max-w-2xl rounded-2xl border border-line bg-surface p-4 sm:p-6 outline-none">
         <h2 id="search-dialog-title" className="mb-5 pr-10 text-lg font-semibold">搜索影片</h2>
@@ -56,7 +58,7 @@ export function SearchDialog({ onClose, onSearch, initialQuery = '' }: {
               ? 'rounded-t-xl border-accent border-b-line bg-surface-raised'
               : 'rounded-xl border-line bg-chip focus-within:border-accent focus-within:ring-1 focus-within:ring-accent/40')}>
               <input
-                ref={inputRef} className="min-w-0 flex-1 bg-transparent pr-2 text-sm text-content placeholder:text-faint focus:outline-none"
+                ref={inputRef} className="min-w-0 flex-1 bg-transparent pr-2 text-base sm:text-sm text-content placeholder:text-faint focus:outline-none"
                 placeholder="输入影片名称..." aria-label="搜索影片" value={input} maxLength={100}
                 onChange={(event) => { setInput(event.target.value); history.resetActive(); }}
                 onFocus={history.onFocus}

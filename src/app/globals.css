@@ -12,23 +12,24 @@
   --c-hover: 226 231 239;
   --c-line: 222 227 236;
   --c-content: 23 32 46;
-  --c-muted: 100 114 134;
+  --c-muted: 94 108 127;
   --c-faint: 89 102 121;
   --c-accent: 49 93 199;
   --c-accent-hover: 36 79 180;
   --c-on-accent: 255 255 255;
   /* 语义状态色（亮色主题取偏深值，保证浅底上的对比度） */
-  --c-danger: 220 38 38;           /* red-600 */
+  --c-danger: 185 28 28;           /* red-700 */
   --c-danger-hover: 185 28 28;     /* red-700 */
-  --c-success: 14 141 105;
-  --c-warning: 217 119 6;          /* amber-600 */
-  --c-info: 37 99 235;             /* blue-600 */
+  --c-success: 8 104 74;
+  --c-warning: 146 64 14;          /* amber-800 */
+  --c-info: 29 78 216;             /* blue-700 */
   --c-rating: 245 158 11;          /* amber-500 */
   /* 实心状态底色（配白字）：比「文字用」色更深一档，保证白字对比度 ≥ 4.5:1 */
   --c-danger-solid: 185 28 28;     /* red-700 */
   --c-success-solid: 21 128 61;    /* green-700 */
   --c-warning-solid: 180 83 9;     /* amber-700 */
   --c-info-solid: 29 78 216;       /* blue-700 */
+  --c-state-tint: .1;
   color-scheme: light;
 }
 
@@ -47,17 +48,18 @@
   --c-accent-hover: 181 202 255;
   --c-on-accent: 14 18 25;
   /* 语义状态色（暗色主题取中等明度值，保证深蓝黑底上的对比度） */
-  --c-danger: 239 68 68;           /* red-500 */
+  --c-danger: 248 113 113;           /* red-400 */
   --c-danger-hover: 248 113 113;   /* red-400 */
   --c-success: 86 200 166;
   --c-warning: 245 158 11;         /* amber-500 */
-  --c-info: 59 130 246;            /* blue-500 */
+  --c-info: 96 165 250;            /* blue-400 */
   --c-rating: 251 191 36;          /* amber-400 */
   /* 实心状态底色（配白字）：与亮色一致取深档，避免琥珀/绿色底白字对比度不足 */
   --c-danger-solid: 185 28 28;     /* red-700 */
   --c-success-solid: 21 128 61;    /* green-700 */
   --c-warning-solid: 180 83 9;     /* amber-700 */
   --c-info-solid: 29 78 216;       /* blue-700 */
+  --c-state-tint: .05;
   color-scheme: dark;
 }
 
@@ -217,9 +219,9 @@ html {
 }
 
 .cinema-hero {
-  height: 440px;
-  margin-top: -105px;
-  padding-top: 105px;
+  height: 370px;
+  margin-top: -65px;
+  padding-top: 65px;
   background-color: rgb(14 18 25);
 }
 
@@ -298,7 +300,7 @@ html {
 }
 
 @media (min-width: 1024px) {
-  .cinema-hero { margin-top: -65px; padding-top: 65px; }
+  .cinema-hero { height: 440px; }
 }
 
 @media (min-width: 1024px) {
@@ -341,3 +343,80 @@ html {
 @media (min-width: 1536px) {
   .poster-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 }
+
+/* 手机上的导航独立固定到底部；正文为导航与系统安全区留出空间。 */
+.mobile-page-nav {
+  position: fixed;
+  z-index: 40;
+  inset: auto 0 0;
+  display: flex;
+  align-items: stretch;
+  padding: 0 .5rem env(safe-area-inset-bottom, 0px);
+  border-top: 1px solid rgb(var(--c-line));
+  background: rgb(var(--c-page));
+  color: rgb(var(--c-content));
+}
+.mobile-page-nav > a {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 48px;
+  padding-inline: .375rem;
+  justify-content: center;
+  white-space: nowrap;
+  font-size: .75rem;
+}
+@media (max-width: 1023px) {
+  body.has-mobile-nav { padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px)); }
+  /* 标题栏保留所有工具入口，窄手机只隐藏重复的品牌文字。 */
+  header > div:first-child { gap: .5rem; }
+  header > div:first-child > a { gap: .375rem; }
+}
+@media (max-width: 359px) {
+  header > div:first-child > a > span { display: none; }
+}
+@media (min-width: 1024px) {
+  .mobile-page-nav { display: none; }
+}
+
+.search-overlay { padding-top: clamp(1rem, 10dvh, 6rem); }
+@media (max-height: 500px) {
+  .search-overlay { padding-top: 1rem; }
+  [aria-labelledby="search-dialog-title"] [role="listbox"] { max-height: 35dvh; }
+}
+
+/* 原生方向锁定不可用时，在网页全屏中旋转播放器，手势仍交给 ArtPlayer。 */
+.art-fullscreen-web.putv-landscape {
+  width: 100vh !important;
+  width: 100dvh !important;
+  height: 100vw !important;
+  transform-origin: 0 0;
+  transform: rotate(90deg) translateY(-100%);
+}
+
+@media (min-width: 1600px) and (hover: none) {
+  .poster-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .poster-track { grid-auto-columns: calc((100% - 5rem) / 6); }
+  .poster-grid h3, [data-poster] > span.mt-3 { font-size: 1rem; }
+  :where(a, button, [tabindex]):focus-visible { outline-width: 3px; outline-offset: 4px; }
+}
+
+/* 详情弹窗保持内部排版，只限制视口高度并允许内容自身滚动。 */
+[aria-modal="true"][aria-label$=" 详情"] {
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 1023px) {
+  html { scroll-padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+}
+.art-fullscreen-web.putv-landscape .art-control-fullscreen { display: none !important; }
+
+/* 状态标签降低底色浓度，保证小字号在两套表面层次中仍清晰。 */
+[class~="bg-accent/15"] { background-color: rgb(var(--c-accent) / var(--c-state-tint)); }
+[class~="bg-danger/15"] { background-color: rgb(var(--c-danger) / var(--c-state-tint)); }
+[class~="bg-warning/15"] { background-color: rgb(var(--c-warning) / var(--c-state-tint)); }
+[class~="hover:bg-warning/25"]:hover { background-color: rgb(var(--c-warning) / calc(var(--c-state-tint) + .05)); }
+[class~="bg-success/15"] { background-color: rgb(var(--c-success) / var(--c-state-tint)); }
+[class~="bg-info/15"] { background-color: rgb(var(--c-info) / var(--c-state-tint)); }

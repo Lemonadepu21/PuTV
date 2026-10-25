@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-label="PuTV">
+  <rect width="1280" height="720" fill="#0E1219"/>
+  <g transform="translate(440 304)">
+    <svg width="112" height="112" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#191F2A"/><path d="M21 46V18h14a11 11 0 0 1 0 22h-6v6h-8Zm8-14h6a3 3 0 1 0 0-6h-6v6Z" fill="#9EBBFF"/></svg>
+    <text x="142" y="81" fill="#F4F6FA" font-family="system-ui,sans-serif" font-size="76" font-weight="600">PuTV</text>
+  </g>
+</svg>

@@ -22,10 +22,27 @@ describe.each([':root', '.dark'])('%s 主题文字对比度', (selector) => {
 
   it.each([
     ['content', 'page'], ['content', 'surface'], ['content', 'surface-raised'],
-    ['muted', 'page'], ['muted', 'surface'], ['faint', 'surface-raised'],
+    ['muted', 'page'], ['muted', 'surface'], ['muted', 'surface-raised'], ['faint', 'surface-raised'],
+    ['success', 'surface'], ['success', 'surface-raised'],
     ['on-accent', 'accent'], ['on-accent', 'accent-hover'],
   ])('%s / %s 达到 AA 正文字体对比度', (foreground, background) => {
     const [low, high] = [luminance(tokens[foreground]), luminance(tokens[background])].sort((a, b) => a - b);
+    expect((high + 0.05) / (low + 0.05)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it.each(['accent', 'danger', 'warning', 'success', 'info'])('%s 标签文字在实际半透明底色上达到 AA', (name) => {
+    const opacity = Number(block.match(/--c-state-tint:\s*([\d.]+)/)![1]);
+    const foreground = tokens[name];
+    const background = tokens['surface-raised'].map((value, index) => value * (1 - opacity) + foreground[index] * opacity);
+    const [low, high] = [luminance(foreground), luminance(background)].sort((a, b) => a - b);
+    expect((high + 0.05) / (low + 0.05)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('警告标签悬停后仍达到 AA', () => {
+    const opacity = Number(block.match(/--c-state-tint:\s*([\d.]+)/)![1]) + .05;
+    const foreground = tokens.warning;
+    const background = tokens['surface-raised'].map((value, index) => value * (1 - opacity) + foreground[index] * opacity);
+    const [low, high] = [luminance(foreground), luminance(background)].sort((a, b) => a - b);
     expect((high + 0.05) / (low + 0.05)).toBeGreaterThanOrEqual(4.5);
   });
 });

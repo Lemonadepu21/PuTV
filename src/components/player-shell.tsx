@@ -23,11 +23,8 @@ import {
   type SkipMark,
   type SkipSegment,
 } from '@/lib/skip-marks';
-import {
-  ART_DEFAULT_CONTROL_HIDE_MS,
-  DESKTOP_CONTROL_HIDE_MS,
-  TOUCH_CONTROL_HIDE_MS,
-} from '@/lib/control-hide';
+import { bindPlayerControls } from '@/lib/player-controls';
+import { bindPlayerOrientation } from '@/lib/player-orientation';
 
 /** 片段时间统一保留 1 位小数：与面板展示保持一致，避免浮点尾巴 */
 const round1 = (v: number) => Math.round(v * 10) / 10;
@@ -491,11 +488,7 @@ export function PlayerShell({
   useEffect(() => {
     if (!containerRef.current || !propsRef.current.url) return;
     const initialUrl = propsRef.current.url;
-    // ArtPlayer 默认 3 秒才隐藏控制栏；桌面失去鼠标悬停后缩短为 0.8 秒。
-    // 触屏没有 hover，自动隐藏会让按钮来不及点（issue #937）：改为常驻，
-    // 由「点按视频 toggle」收起。CONTROL_HIDE_TIME 是 static，创建后修改立即生效。
     const touchPointer = prefersTouchPointer();
-    Artplayer.CONTROL_HIDE_TIME = touchPointer ? TOUCH_CONTROL_HIDE_MS : DESKTOP_CONTROL_HIDE_MS;
 
     // 初始化每集状态
     mediaHealthyRef.current = true;
@@ -524,7 +517,7 @@ export function PlayerShell({
       aspectRatio: true,
       fullscreen: true,
       fullscreenWeb: true,
-      miniProgressBar: true,
+      miniProgressBar: false,
       mutex: true,
       backdrop: true,
       playsInline: true,
@@ -563,6 +556,8 @@ export function PlayerShell({
       },
     });
     artRef.current = art;
+    const cleanupControls = bindPlayerControls(art, touchPointer);
+    const cleanupOrientation = bindPlayerOrientation(art, touchPointer);
 
     // 进度条区间可视化：初始渲染一次，换集 duration 变化时重绘
     renderSkipMarks();
@@ -743,6 +738,7 @@ export function PlayerShell({
 
     // —— 键盘快捷键（旧版 hotkey:false + 自定义逻辑的移植） ——
     const shortcuts = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
       const target = e.target as HTMLElement;
       // 输入框或按钮获得焦点时不劫持按键：否则空格会吞掉按钮的默认激活
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.closest('button')) return;
@@ -767,7 +763,9 @@ export function PlayerShell({
           current.toggle(); showHint('播放/暂停'); e.preventDefault();
           break;
         case 'f': case 'F':
-          current.fullscreen = !current.fullscreen; e.preventDefault();
+          if (current.fullscreenWeb) current.fullscreenWeb = false;
+          else current.fullscreen = !current.fullscreen;
+          e.preventDefault();
           break;
         // 标记类快捷键一律要求 Shift：这几键会直接写盘并影响整部剧，
         // 单键太容易误触（误记片头 = 之后每集都被跳过一大段）
@@ -816,31 +814,7 @@ export function PlayerShell({
     let longPressTimer: ReturnType<typeof setTimeout> | null = null;
     let isLongPress = false;
     let originalRate = 1.0;
-    const el = containerRef.current;
-
-    // 全屏时播放器覆盖整个视口，无法依赖 mouseleave 判断“移出播放器”。
-    // 改为按鼠标活动计时：停止移动后快速收起控制栏，移动时立即显示。
-    let controlHideTimer: ReturnType<typeof setTimeout> | null = null;
-    const showControlsOnPointerMove = () => {
-      art.controls.show = true;
-      if (controlHideTimer) clearTimeout(controlHideTimer);
-      controlHideTimer = setTimeout(() => {
-        if (!art.setting.show) art.controls.show = false;
-      }, 800);
-    };
-    const hideControlsOnMouseLeave = () => {
-      if (controlHideTimer) clearTimeout(controlHideTimer);
-      controlHideTimer = null;
-      art.controls.show = false;
-    };
-    // 触屏不监听 mousemove/mouseleave，也跳过初始显示：iOS 点按视频的合成事件
-    // 序列是 mousemove → click，若 mousemove 先把 show 置 true，紧跟的 ArtPlayer
-    // click toggle 会把它翻回 false——控制栏「闪一下即隐」，正是 issue #937 的病灶
-    if (!touchPointer) {
-      el?.addEventListener('mousemove', showControlsOnPointerMove);
-      el?.addEventListener('mouseleave', hideControlsOnMouseLeave);
-      showControlsOnPointerMove();
-    }
+    const el = art.template.$player;
 
     const onTouchStart = (e: TouchEvent) => {
       if (art.video?.paused) return;
@@ -903,12 +877,10 @@ export function PlayerShell({
       el?.removeEventListener('touchmove', onTouchMove);
       el?.removeEventListener('contextmenu', onContextMenu);
       art.video?.removeEventListener('resize', reportVideoHeight);
-      el?.removeEventListener('mousemove', showControlsOnPointerMove);
-      el?.removeEventListener('mouseleave', hideControlsOnMouseLeave);
-      if (controlHideTimer) clearTimeout(controlHideTimer);
+      cleanupControls();
+      cleanupOrientation();
       restoreCleanupRef.current?.();
       restoreCleanupRef.current = null;
-      Artplayer.CONTROL_HIDE_TIME = ART_DEFAULT_CONTROL_HIDE_MS;
       hlsRef.current?.destroy();
       hlsRef.current = null;
       recoveryRef.current?.dispose();
@@ -980,7 +952,7 @@ export function PlayerShell({
         <div
           className="absolute inset-0 bg-black pointer-events-none"
           style={{
-            backgroundImage: 'url(/player-poster.png)',
+            backgroundImage: 'url(/player-poster.svg)',
             backgroundSize: 'contain',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat',

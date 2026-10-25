@@ -8,9 +8,11 @@ import { ThemeProvider } from './theme';
 import { GlobalDownloadManager } from './download-manager';
 import { useAppStore, hydrateLiveProbeResults } from '@/lib/store';
 import { api, STATUS_QUERY_KEY } from '@/lib/client-api';
+import { enableDirectionalNavigation } from '@/lib/keyboard-navigation';
 import { applyEnvPresets } from '@/lib/subscription-sync';
 
 export function Providers({ children }: { children: ReactNode }) {
+  useEffect(enableDirectionalNavigation, []);
   const [queryClient] = useState(
     () =>
       new QueryClient({

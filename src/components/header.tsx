@@ -27,6 +27,10 @@ export function Header({ immersive = false, category, searchQuery, onSearch }: {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
+    document.body.classList.add('has-mobile-nav');
+    return () => document.body.classList.remove('has-mobile-nav');
+  }, []);
+  useEffect(() => {
     const update = () => setScrolled(window.scrollY > 16);
     update();
     window.addEventListener('scroll', update, { passive: true });
@@ -52,10 +56,10 @@ export function Header({ immersive = false, category, searchQuery, onSearch }: {
         )}
       >
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10 h-16 flex items-center gap-4 lg:gap-8">
-          <Link href="/" aria-label="PuTv 首页" className="flex items-center gap-2.5 shrink-0 rounded-lg">
+          <Link href="/" aria-label="PuTV 首页" className="flex items-center gap-2.5 shrink-0 rounded-lg">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo.svg" alt="" className="w-8 h-8" />
-            <span className="text-xl font-semibold tracking-tight">PuTv</span>
+            <span className="text-xl font-semibold tracking-tight">PuTV</span>
           </Link>
 
           <nav aria-label="主导航" className="hidden lg:flex items-center gap-1 self-stretch">
@@ -73,7 +77,7 @@ export function Header({ immersive = false, category, searchQuery, onSearch }: {
             <IconButton label="观看历史" onClick={() => setHistoryOpen(true)}>
               <Icon name="clock" />
             </IconButton>
-            <span className="hidden sm:inline-flex">
+            <span className="inline-flex">
               <IconButton label="下载管理" onClick={requestShowDownloadManager}>
                 <Icon name="download" />
               </IconButton>
@@ -83,16 +87,15 @@ export function Header({ immersive = false, category, searchQuery, onSearch }: {
             </IconButton>
           </nav>
         </div>
-        <nav aria-label="移动页面导航" className="lg:hidden flex items-center justify-between gap-0 overflow-x-auto whitespace-nowrap border-t border-line/60 px-2">
+      </header>
+      <nav aria-label="移动页面导航" className="mobile-page-nav lg:hidden">
           <HeaderLink href="/" active={pathname === '/' && !category && !searchQuery}>首页</HeaderLink>
           {BROWSE_CATEGORIES.map((entry) => (
             <HeaderLink key={entry.id} href={`/?category=${entry.id}`} active={pathname === '/' && category === entry.id && !searchQuery}>{entry.label}</HeaderLink>
           ))}
           <HeaderLink href="/live" active={pathname === '/live'}>直播</HeaderLink>
-          <button type="button" onClick={requestShowDownloadManager} className="sm:hidden shrink-0 min-h-10 px-2 text-sm text-muted hover:text-content">下载</button>
           <HeaderLink href="/about" active={pathname === '/about'}>关于</HeaderLink>
-        </nav>
-      </header>
+      </nav>
 
       {searchOpen && <SearchDialog onClose={closeSearch} onSearch={onSearch} initialQuery={searchQuery} />}
       <SourceManagerDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />

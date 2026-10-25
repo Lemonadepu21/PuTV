@@ -167,7 +167,7 @@ function HomeContent() {
           <RecommendSection onPick={runSearch} />
         ) : (
           <section className="content-container py-24 text-center">
-            <h1 className="mb-6 text-3xl font-semibold">PuTv</h1>
+            <h1 className="mb-6 text-3xl font-semibold">PuTV</h1>
             <button type="button" className="btn-primary min-h-12 px-6" onClick={() => setSearchOpen(true)}><Icon name="search" />搜索影片</button>
           </section>
         ))}
@@ -296,7 +296,7 @@ function NoSourceGuide({ hasSources = false }: { hasSources?: boolean }) {
           <>点击右上角「设置」，勾选要参与搜索的点播源后重新搜索。</>
         ) : (
           <>
-            PuTv 不内置任何采集站。点击右上角「设置 → 添加 API」，填入一个
+            PuTV 不内置任何采集站。点击右上角「设置 → 添加 API」，填入一个
             Apple CMS 采集站地址（如 <code className="text-accent text-xs">https://example.com/api.php/provide/vod</code>），
             勾选后即可开始搜索。
           </>

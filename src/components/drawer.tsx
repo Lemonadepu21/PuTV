@@ -1,5 +1,7 @@
 'use client';
 
+import { isBackKey } from '@/lib/keyboard-navigation';
+
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { Icon } from './icon';
@@ -115,11 +117,12 @@ export function Drawer({
   useEffect(() => {
     if (!mounted) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (isBackKey(e)) {
         // 抽屉内若有确认弹窗等上层对话框（role=alertdialog），Esc 交给它处理，避免一并关闭抽屉
         if (document.querySelector('[role="alertdialog"]')) return;
         // 非模态不抢 Esc：焦点不在抽屉里时（如正在全屏看片）留给播放器退出全屏
         if (!modal && !panelRef.current?.contains(document.activeElement)) return;
+        e.preventDefault();
         e.stopPropagation();
         onClose();
         return;

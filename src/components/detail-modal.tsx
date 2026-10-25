@@ -1,5 +1,7 @@
 'use client';
 
+import { isBackKey } from '@/lib/keyboard-navigation';
+
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/client-api';
@@ -82,7 +84,7 @@ export function DetailModal({ item, onClose }: { item: SearchResultItem | null; 
   useEffect(() => {
     if (!item) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (isBackKey(e)) { e.preventDefault(); onClose(); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);

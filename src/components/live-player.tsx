@@ -5,7 +5,8 @@ import Artplayer from 'artplayer';
 import Hls, { type HlsConfig } from 'hls.js';
 import { Spinner } from './states';
 import { prefersTouchPointer } from '@/lib/touch-pointer';
-import { ART_DEFAULT_CONTROL_HIDE_MS, TOUCH_CONTROL_HIDE_MS } from '@/lib/control-hide';
+import { bindPlayerControls } from '@/lib/player-controls';
+import { bindPlayerOrientation } from '@/lib/player-orientation';
 
 /**
  * 直播播放器：与点播 player-shell 完全独立。
@@ -62,7 +63,7 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
   const [loading, setLoading] = useState(true);
   // 手动重试计数：变化时重建整个播放器实例（比 location.reload() 轻得多）
   const [retryNonce, setRetryNonce] = useState(0);
-  // 起播前的品牌占位图（与点播 player-shell 共用 /player-poster.png），实际开始播放后隐藏
+  // 起播前的品牌占位图（与点播 player-shell 共用 /player-poster.svg），实际开始播放后隐藏
   const [showPoster, setShowPoster] = useState(true);
   // 换台 OSD：切台后短暂显示频道名（键盘换台/控制条换台时的视觉反馈，全屏内同样可见）
   const [osdTitle, setOsdTitle] = useState('');
@@ -292,10 +293,7 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
         click: () => onNextChannel(),
       });
     }
-    // 触屏没有 hover，原生 3 秒自动隐藏会让直播控制栏（上一台/下一台）点不到
-    // （issue #937）：触屏常驻、由点按视频 toggle 收起；桌面行为不变
     const touchPointer = prefersTouchPointer();
-    if (touchPointer) Artplayer.CONTROL_HIDE_TIME = TOUCH_CONTROL_HIDE_MS;
 
     const art = new Artplayer({
       container: containerRef.current,
@@ -335,6 +333,8 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
       },
     });
     artRef.current = art;
+    const cleanupControls = bindPlayerControls(art, touchPointer);
+    const cleanupOrientation = bindPlayerOrientation(art, touchPointer);
     art.on('video:loadedmetadata', () => {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -371,10 +371,10 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
       clearTimeout(startTimer);
       if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
       cleanupEngines();
+      cleanupControls();
+      cleanupOrientation();
       art.destroy();
       artRef.current = null;
-      // CONTROL_HIDE_TIME 是全局 static：恢复库默认值，避免影响后续挂载的其它播放器
-      if (touchPointer) Artplayer.CONTROL_HIDE_TIME = ART_DEFAULT_CONTROL_HIDE_MS;
       destroyed = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -388,7 +388,7 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
         <div
           className="absolute inset-0 bg-black pointer-events-none"
           style={{
-            backgroundImage: 'url(/player-poster.png)',
+            backgroundImage: 'url(/player-poster.svg)',
             backgroundSize: 'contain',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat',

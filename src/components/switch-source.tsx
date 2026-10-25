@@ -1,5 +1,7 @@
 'use client';
 
+import { isBackKey } from '@/lib/keyboard-navigation';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/client-api';
@@ -87,7 +89,8 @@ export function SwitchSourceModal({
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (isBackKey(e)) {
+        e.preventDefault();
         e.stopPropagation();
         onClose();
       }

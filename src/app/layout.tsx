@@ -3,12 +3,9 @@ import './globals.css';
 import { Providers } from '@/components/providers';
 
 export const metadata: Metadata = {
-  title: {
-    default: 'PuTv - 免费在线视频搜索与观看平台',
-    template: '%s - PuTv',
-  },
+  title: 'PuTV',
   description:
-    'PuTv 是一个免费的在线视频搜索平台，无广告、安全，提供来自多个视频源的内容搜索与观看服务，无需注册即可使用。',
+    'PuTV 是一个免费的在线视频搜索平台，无广告、安全，提供来自多个视频源的内容搜索与观看服务，无需注册即可使用。',
   manifest: '/manifest.webmanifest',
   icons: {
     icon: [
@@ -25,6 +22,8 @@ export const viewport: Viewport = {
   themeColor: '#0E1219',
   width: 'device-width',
   initialScale: 1,
+  interactiveWidget: 'resizes-content',
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
