@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import Link from 'next/link';
+import { HistorySyncTools } from './watch-sync';
 import { Drawer } from './drawer';
 import { ConfirmDialog } from './confirm-dialog';
 import { EmptyState, LoadingState } from './states';
@@ -97,7 +98,7 @@ export function HistoryPanel({ open, onClose }: { open: boolean; onClose: () => 
         ) : undefined
       }
     >
-      <p className="mb-3 text-xs text-muted">本设备当前档案的记录。旧版记录保留，暂未导入。</p>
+      {open && <HistorySyncTools/>}
       {!history ? (
         <LoadingState />
       ) : total === 0 ? (
@@ -113,7 +114,7 @@ export function HistoryPanel({ open, onClose }: { open: boolean; onClose: () => 
           )}
           <ul className="space-y-2">
             {visible.map((item) => (
-              <HistoryItem key={`${item.sourceKey}_${item.vodId}`} item={item} />
+              <HistoryItem key={item.id} item={item} />
             ))}
           </ul>
         </>
@@ -144,7 +145,7 @@ function HistoryItem({ item }: { item: HistoryEntry }) {
   const envSources = useAppStore((s) => s.envSources);
   const { toast } = useToast();
   const [imgFailed, setImgFailed] = useState(false);
-  const source = resolveSource({ customAPIs, envSources }, item.sourceKey);
+  const source = resolveSource({ customAPIs, envSources }, item.sourceKey,{url:item.sourceUrl});
 
   const hasPercent =
     item.playbackPosition > 10 && item.duration > 0 && item.playbackPosition < item.duration * 0.95;
@@ -160,7 +161,7 @@ function HistoryItem({ item }: { item: HistoryEntry }) {
   });
 
   const remove = () => {
-    void removeHistory(item.sourceKey, item.vodId).then(() => {
+    void removeHistory(item.sourceKey, item.vodId,item.sourceUrl).then(() => {
       // 轻操作：给撤销窗口，恢复时写回原记录
       toast('已删除该记录', 'info', {
         action: {
@@ -177,6 +178,7 @@ function HistoryItem({ item }: { item: HistoryEntry }) {
               playbackPosition: item.playbackPosition,
               duration: item.duration,
               timestamp: item.timestamp,
+              completed: item.completed,
             }).then(() => toast('已恢复', 'success'));
           },
         },
@@ -214,6 +216,7 @@ function HistoryItem({ item }: { item: HistoryEntry }) {
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium text-content truncate">{item.title}</div>
             <div className="text-xs text-faint mt-0.5 flex items-center gap-1.5 flex-wrap">
+              {item.completed && <span>已看完</span>}
               {item.totalEpisodes > 0 && <span>第 {item.episodeIndex + 1}/{item.totalEpisodes} 集</span>}
               {hasPercent && <span>· {formatTime(item.playbackPosition)}</span>}
               <span>· {formatRelativeTime(item.timestamp)}</span>

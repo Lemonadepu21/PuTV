@@ -8,7 +8,7 @@ vi.mock('./db', () => ({
   saveLiveProbeResults: vi.fn(async () => {}),
 }));
 
-import { isInDisabledSubscription, isSourceDisabled, keyBelongsToSubscription, SOURCE_DISABLE_LADDER, subKeyPrefix, useAppStore } from './store';
+import { isInDisabledSubscription, isSourceDisabled, keyBelongsToSubscription, SOURCE_DISABLE_LADDER, subKeyPrefix, resolveSource, useAppStore } from './store';
 import type { SourceConfig } from './types';
 
 const store = () => useAppStore.getState();
@@ -520,4 +520,9 @@ describe('订阅自动刷新状态', () => {
     expect(find(subUrl)?.refreshDays).toBe(3);
     expect(find(subUrl)?.failStreak).toBe(2);
   });
+});
+
+describe('跨设备历史的片源恢复',()=>{
+  it('新设备未配置来源时使用历史记录的 API 地址',()=>{expect(resolveSource({customAPIs:[],envSources:[]},'custom_0',{url:'https://original.example/api'})).toMatchObject({key:'custom_0',url:'https://original.example/api'});});
+  it('相同短 ID 但 URL 不同不能误用新设备的另一个片源',()=>{const source={key:'custom_0',name:'Other source',url:'https://other.example/api'};const state={customAPIs:[source],envSources:[]};expect(resolveSource(state,'custom_0',{url:'https://original.example/api'})).toHaveProperty('url','https://original.example/api');expect(resolveSource(state,'custom_0')).toEqual(source);});
 });

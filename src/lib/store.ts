@@ -970,14 +970,14 @@ export async function hydrateLiveProbeResults(): Promise<void> {
   }
 }
 
-/** 获取指定 key 的源配置；找不到时支持从 URL 参数兜底构造 */
+/** 历史/详情携带的具体地址优先，避免不同设备上相同短 ID 错配片源。 */
 export function resolveSource(
   store: Pick<AppState, 'customAPIs' | 'envSources'>,
   key: string,
   fallback?: { url?: string; detail?: string; name?: string }
 ): SourceConfig | undefined {
   const found = store.customAPIs.find((a) => a.key === key) ?? store.envSources.find((a) => a.key === key);
-  if (found) return found;
+  if (found && (!fallback?.url || fallback.url === found.url)) return found;
   if (fallback?.url) {
     return {
       key,

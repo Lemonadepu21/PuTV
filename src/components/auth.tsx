@@ -26,6 +26,7 @@ import type {
   ViewingProfile,
 } from '@/lib/types';
 import { AccountScreens, ProfileChooser } from './account-screens';
+import { WatchSyncLifecycle } from './watch-sync';
 import { GlobalDownloadManager } from './download-manager';
 import { ThemeToggle } from './theme';
 
@@ -153,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setScreen,
       }}
     >
-      {account && profile && <GlobalDownloadManager />}
+      {account && profile && <><GlobalDownloadManager /><WatchSyncLifecycle context={`${account.id}:${profile.id}`}/></>}
       {!checked ? (
         <div
           role="status"

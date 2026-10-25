@@ -17,26 +17,43 @@ import {
  *   高频写入不再拖累设置快照的序列化。
  */
 
-export interface HistoryEntry {
-  /** 主键：`${sourceKey}_${vodId}` */
+export type {
+  WatchHistory as HistoryEntry,
+  WatchProgress as ProgressEntry,
+} from './watch-types';
+import {
+  contentKey,
+  episodeKey,
+  recordKey,
+  newWatchOperationId,
+  WATCH_DIRTY,
+  WATCH_URGENT,
+  type WatchHistory as HistoryEntry,
+  type WatchProgress as ProgressEntry,
+  type WatchMutation,
+  type WatchRecord,
+  type WatchKind,
+  type WatchValue,
+} from './watch-types';
+export interface WatchVersion {
   id: string;
-  sourceKey: string;
-  sourceUrl?: string;
-  vodId: string;
-  title: string;
-  pic?: string;
-  episodeIndex: number;
-  totalEpisodes: number;
-  playbackPosition: number;
-  duration: number;
-  timestamp: number;
+  revision: number;
+  record?: WatchRecord;
 }
-
-export interface ProgressEntry {
-  key: string; // `${sourceKey}_${vodId}_${episodeIndex}`
-  position: number;
-  duration: number;
-  updatedAt: number;
+export interface WatchQueue extends WatchMutation {
+  id: string;
+}
+export interface WatchConflict extends WatchQueue {
+  error: string;
+}
+export interface WatchMeta {
+  key: string;
+  value: string | number;
+}
+export interface LegacyImportMarker {
+  id: string;
+  context: string;
+  status: string;
 }
 
 export interface SearchHistoryEntry {
@@ -79,7 +96,7 @@ export interface DownloadTaskEntry {
   updatedAt: number;
 }
 
-function createLocalDatabase(name: string) {
+export function createLocalDatabase(name: string) {
   const db = new Dexie(name) as Dexie & {
     history: EntityTable<HistoryEntry, 'id'>;
     progress: EntityTable<ProgressEntry, 'key'>;
@@ -87,6 +104,11 @@ function createLocalDatabase(name: string) {
     liveProbe: EntityTable<LiveProbeEntry & { url: string }, 'url'>;
     segmentMeta: EntityTable<SegmentMetaEntry, 'key'>;
     downloads: EntityTable<DownloadTaskEntry, 'id'>;
+    watchVersions: EntityTable<WatchVersion, 'id'>;
+    watchQueue: EntityTable<WatchQueue, 'id'>;
+    watchConflicts: EntityTable<WatchConflict, 'id'>;
+    watchMeta: EntityTable<WatchMeta, 'key'>;
+    legacyImports: EntityTable<LegacyImportMarker, 'id'>;
   };
 
   db.version(1).stores({
@@ -106,6 +128,52 @@ function createLocalDatabase(name: string) {
     downloads: 'id, createdAt',
   });
 
+  db.version(4)
+    .stores({
+      watchVersions: 'id',
+      watchQueue: 'id, modifiedAt',
+      watchConflicts: 'id',
+      watchMeta: 'key',
+      legacyImports: 'id',
+    })
+    .upgrade(async (tx) => {
+      const histories = (await tx.table('history').toArray()) as HistoryEntry[];
+      for (const entry of histories) {
+        const id = contentKey(entry.sourceKey, entry.vodId, entry.sourceUrl);
+        if (entry.id !== id) {
+          await tx.table('history').put({ ...entry, id });
+          await tx.table('history').delete(entry.id);
+        }
+      }
+      for (const p of (await tx
+        .table('progress')
+        .toArray()) as ProgressEntry[]) {
+        const match = /_(\d+)$/.exec(p.key);
+        if (!match) continue;
+        const history = histories.find(
+          (h) =>
+            `${h.sourceKey}_${h.vodId}` === p.key.slice(0, -match[0].length)
+        );
+        if (!history) continue;
+        const episodeIndex = Number(match[1]),
+          key = episodeKey(
+            history.sourceKey,
+            history.vodId,
+            episodeIndex,
+            history.sourceUrl
+          );
+        await tx.table('progress').put({
+          ...p,
+          key,
+          sourceKey: history.sourceKey,
+          sourceUrl: history.sourceUrl,
+          vodId: history.vodId,
+          episodeIndex,
+        });
+        await tx.table('progress').delete(p.key);
+      }
+    });
+
   return db;
 }
 // 旧 libretv 数据库保持原样，未登录与已认证档案使用独立数据库。
@@ -120,97 +188,327 @@ export function setLocalIdentity(accountId: string, profileId: string) {
 export const MAX_HISTORY = 100;
 export const MAX_SEARCH_HISTORY = 10;
 
+export function notifyWatch(urgent = false) {
+  if (typeof window !== 'undefined')
+    window.dispatchEvent(new Event(urgent ? WATCH_URGENT : WATCH_DIRTY));
+}
+export async function queueWatch(
+  local: typeof db,
+  kind: WatchKind,
+  key: string,
+  value: WatchValue | null,
+  deleted = false,
+  modifiedAt = Date.now()
+) {
+  const id = recordKey(kind, key),
+    known = await local.watchVersions.get(id),
+    clear = await local.watchMeta.get('clearRevision');
+  const previous = await local.watchQueue.get(id);
+  await local.watchQueue.put({
+    id,
+    opId: newWatchOperationId(),
+    kind,
+    key,
+    value,
+    deleted,
+    modifiedAt,
+    baseRevision: Math.max(
+      previous?.baseRevision ?? known?.revision ?? 0,
+      Number(clear?.value || 0)
+    ),
+  });
+}
+const writableTables = (local: typeof db) => [
+  local.history,
+  local.progress,
+  local.watchQueue,
+  local.watchVersions,
+  local.watchMeta,
+];
 export async function upsertHistory(
   entry: Omit<HistoryEntry, 'id'>
 ): Promise<void> {
-  const id = `${entry.sourceKey}_${entry.vodId}`;
-  const existing = await db.history.get(id);
-  const merged: HistoryEntry = {
-    ...existing,
-    ...entry,
-    id,
-    playbackPosition:
-      entry.playbackPosition > 10
-        ? entry.playbackPosition
-        : (existing?.playbackPosition ?? 0),
-    duration: entry.duration || existing?.duration || 0,
-    timestamp: Date.now(),
-  };
-  await db.history.put(merged);
-  // 淘汰最旧记录
-  const count = await db.history.count();
-  if (count > MAX_HISTORY) {
-    const oldest = await db.history
-      .orderBy('timestamp')
-      .limit(count - MAX_HISTORY)
-      .toArray();
-    await db.history.bulkDelete(oldest.map((o) => o.id));
-  }
+  const local = db,
+    id = contentKey(entry.sourceKey, entry.vodId, entry.sourceUrl);
+  await local.transaction('rw', writableTables(local), async () => {
+    const existing = await local.history.get(id);
+    const merged: HistoryEntry = {
+      ...existing,
+      ...entry,
+      id,
+      completed: entry.completed ?? false,
+      playbackPosition:
+        entry.playbackPosition > 10
+          ? entry.playbackPosition
+          : existing?.episodeIndex === entry.episodeIndex
+            ? existing?.playbackPosition || 0
+            : 0,
+      duration:
+        entry.duration ||
+        (existing?.episodeIndex === entry.episodeIndex
+          ? existing.duration
+          : 0) ||
+        0,
+      timestamp: Date.now(),
+    };
+    await local.history.put(merged);
+    await queueWatch(local, 'history', id, merged);
+    const count = await local.history.count();
+    if (count > MAX_HISTORY) {
+      const old = await local.history
+        .orderBy('timestamp')
+        .limit(count - MAX_HISTORY)
+        .primaryKeys();
+      await local.history.bulkDelete(old);
+    }
+  });
+  notifyWatch();
 }
-
 export async function updateHistoryProgress(
   sourceKey: string,
   vodId: string,
   position: number,
-  duration: number
+  duration: number,
+  sourceUrl?: string,
+  episodeIndex?: number
 ): Promise<void> {
-  const id = `${sourceKey}_${vodId}`;
-  const existing = await db.history.get(id);
-  if (!existing) return;
   if (
-    Math.abs(existing.playbackPosition - position) < 2 &&
-    Math.abs(existing.duration - duration) < 2
+    !Number.isFinite(position) ||
+    !Number.isFinite(duration) ||
+    position < 0 ||
+    duration <= 0
   )
     return;
-  await db.history.update(id, {
-    playbackPosition: position,
-    duration,
-    timestamp: Date.now(),
+  const local = db,
+    id = contentKey(sourceKey, vodId, sourceUrl);
+  await local.transaction('rw', writableTables(local), async () => {
+    const existing = await local.history.get(id);
+    if (
+      !existing ||
+      (episodeIndex !== undefined && existing.episodeIndex !== episodeIndex)
+    )
+      return;
+    if (
+      Math.abs(existing.playbackPosition - position) < 2 &&
+      Math.abs(existing.duration - duration) < 2
+    )
+      return;
+    const updated = {
+      ...existing,
+      playbackPosition: Math.min(position, duration),
+      duration,
+      timestamp: Date.now(),
+      completed: false,
+    };
+    await local.history.put(updated);
+    await queueWatch(local, 'history', id, updated);
   });
+  notifyWatch();
 }
-
 export async function removeHistory(
   sourceKey: string,
-  vodId: string
+  vodId: string,
+  sourceUrl?: string
 ): Promise<void> {
-  await db.history.delete(`${sourceKey}_${vodId}`);
+  const local = db,
+    id = contentKey(sourceKey, vodId, sourceUrl);
+  await local.transaction('rw', writableTables(local), async () => {
+    const old = await local.history.get(id);
+    if (!old) return;
+    await local.history.delete(id);
+    await queueWatch(local, 'history', id, old, true);
+  });
+  notifyWatch(true);
 }
-
 export async function clearAllHistory(): Promise<void> {
-  // 一并清进度表：否则从历史重新打开时可能取到已清空的旧进度
-  await Promise.all([db.history.clear(), db.progress.clear()]);
+  const local = db;
+  await local.transaction('rw', writableTables(local), async () => {
+    await local.history.clear();
+    await local.progress.clear();
+    await local.watchQueue.clear();
+    const cursor = String((await local.watchMeta.get('cursor'))?.value || '0'),
+      revision = Number(cursor.slice(cursor.lastIndexOf(':') + 1)) || 0;
+    await local.watchQueue.put({
+      id: recordKey('clear', ''),
+      opId: newWatchOperationId(),
+      kind: 'clear',
+      key: '',
+      value: null,
+      deleted: true,
+      modifiedAt: Date.now(),
+      baseRevision: revision,
+    });
+  });
+  notifyWatch(true);
 }
-
 export function progressKeyOf(
   sourceKey: string,
   vodId: string,
-  episodeIndex: number
+  index: number,
+  sourceUrl?: string
 ): string {
-  return `${sourceKey}_${vodId}_${episodeIndex}`;
+  return episodeKey(sourceKey, vodId, index, sourceUrl);
 }
-
+export async function getSavedProgress(
+  sourceKey: string,
+  vodId: string,
+  index: number,
+  sourceUrl?: string
+) {
+  return (
+    (await db.progress.get(episodeKey(sourceKey, vodId, index, sourceUrl))) ||
+    (await db.progress.get(`${sourceKey}_${vodId}_${index}`))
+  );
+}
 export async function saveProgress(
   sourceKey: string,
   vodId: string,
   episodeIndex: number,
   position: number,
-  duration: number
+  duration: number,
+  sourceUrl?: string
 ): Promise<void> {
-  if (!duration || position < 1) return;
-  await db.progress.put({
-    key: progressKeyOf(sourceKey, vodId, episodeIndex),
-    position,
-    duration,
-    updatedAt: Date.now(),
+  if (
+    !Number.isFinite(position) ||
+    !Number.isFinite(duration) ||
+    duration <= 0 ||
+    position < 0
+  )
+    return;
+  const local = db,
+    key = episodeKey(sourceKey, vodId, episodeIndex, sourceUrl);
+  await local.transaction('rw', writableTables(local), async () => {
+    const old = await local.progress.get(key);
+    if (
+      old &&
+      !old.completed &&
+      Math.abs(old.position - position) < 2 &&
+      Math.abs(old.duration - duration) < 2
+    )
+      return;
+    const value: ProgressEntry = {
+      key,
+      sourceKey,
+      sourceUrl,
+      vodId,
+      episodeIndex,
+      position: Math.min(position, duration),
+      duration,
+      updatedAt: Date.now(),
+      completed: false,
+    };
+    await local.progress.put(value);
+    await queueWatch(local, 'progress', key, value);
   });
+  notifyWatch();
 }
-
 export async function clearProgress(
   sourceKey: string,
   vodId: string,
-  episodeIndex: number
+  episodeIndex: number,
+  sourceUrl?: string
 ): Promise<void> {
-  await db.progress.delete(progressKeyOf(sourceKey, vodId, episodeIndex));
+  const local = db,
+    key = episodeKey(sourceKey, vodId, episodeIndex, sourceUrl);
+  await local.transaction('rw', writableTables(local), async () => {
+    const old = await local.progress.get(key),
+      history = await local.history.get(
+        contentKey(sourceKey, vodId, sourceUrl)
+      );
+    const duration = old?.duration || history?.duration || 0;
+    const value: ProgressEntry = {
+      key,
+      sourceKey,
+      sourceUrl,
+      vodId,
+      episodeIndex,
+      position: duration,
+      duration,
+      updatedAt: Date.now(),
+      completed: true,
+    };
+    await local.progress.put(value);
+    await queueWatch(local, 'progress', key, value);
+    if (history?.episodeIndex === episodeIndex) {
+      const changed = {
+        ...history,
+        playbackPosition: duration,
+        duration,
+        timestamp: Date.now(),
+        completed: episodeIndex + 1 >= history.totalEpisodes,
+      };
+      await local.history.put(changed);
+      await queueWatch(local, 'history', history.id, changed);
+    }
+  });
+  notifyWatch(true);
+}
+export async function bootstrapWatch(local: typeof db) {
+  if (await local.watchMeta.get('bootstrapped')) return;
+  await local.transaction('rw', writableTables(local), async () => {
+    for (const h of await local.history.toArray())
+      if (!(await local.watchQueue.get(recordKey('history', h.id))))
+        await queueWatch(local, 'history', h.id, h, false, h.timestamp);
+    for (const p of await local.progress.toArray())
+      if (
+        p.sourceKey &&
+        p.vodId &&
+        p.episodeIndex !== undefined &&
+        !(await local.watchQueue.get(recordKey('progress', p.key)))
+      )
+        await queueWatch(local, 'progress', p.key, p, false, p.updatedAt);
+    await local.watchMeta.put({ key: 'bootstrapped', value: 1 });
+  });
+}
+export async function applyWatch(local: typeof db, records: WatchRecord[]) {
+  await local.transaction(
+    'rw',
+    [...writableTables(local), local.watchConflicts],
+    async () => {
+      for (const r of records) {
+        const id = recordKey(r.kind, r.key),
+          known = await local.watchVersions.get(id);
+        if (known && known.revision >= r.revision) continue;
+        if (r.kind === 'clear') {
+          const clear = Number(
+            (await local.watchMeta.get('clearRevision'))?.value || 0
+          );
+          if (clear >= r.revision) continue;
+          await local.watchMeta.put({
+            key: 'clearRevision',
+            value: r.revision,
+          });
+          // 删除屏障优先，离线未确认变更留在冲突库，不能静默复活已删除数据。
+          for (const pending of await local.watchQueue.toArray())
+            if (pending.baseRevision < r.revision) {
+              await local.watchConflicts.put({
+                ...pending,
+                id: pending.opId,
+                error: '其他设备已清空记录',
+              });
+              await local.watchQueue.delete(pending.id);
+            }
+          await local.history.clear();
+          await local.progress.clear();
+          for (const pending of await local.watchQueue.toArray())
+            if (!pending.deleted && pending.value) {
+              if (pending.kind === 'history')
+                await local.history.put(pending.value as HistoryEntry);
+              if (pending.kind === 'progress')
+                await local.progress.put(pending.value as ProgressEntry);
+            }
+        } else if (
+          !(await local.watchQueue.get(id)) &&
+          !(await local.watchQueue.get(recordKey('clear', '')))
+        ) {
+          const table = r.kind === 'history' ? local.history : local.progress;
+          if (r.deleted) await table.delete(r.key);
+          else if (r.value) await table.put(r.value as never);
+        }
+        await local.watchVersions.put({ id, revision: r.revision, record: r });
+      }
+    }
+  );
 }
 
 export async function addSearchHistory(text: string): Promise<void> {

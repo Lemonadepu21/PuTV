@@ -21,3 +21,6 @@ avatars/
 *.db-wal
 *.db-shm
 .next-v2/
+
+.next-v2-sync/
+data-backups/

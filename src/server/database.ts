@@ -72,6 +72,27 @@ export function database() {
         `);
         db.prepare('INSERT INTO schema_migrations VALUES(1,?)').run(Date.now());
       }
+      if (!db.prepare('SELECT 1 FROM schema_migrations WHERE version=2').get()) {
+        db.exec(`
+          CREATE TABLE watch_clock (revision INTEGER PRIMARY KEY AUTOINCREMENT);
+          CREATE TABLE watch_records (
+            profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE RESTRICT,
+            kind TEXT NOT NULL CHECK(kind IN ('history','progress','clear')),
+            record_key TEXT NOT NULL, value_json TEXT, op_id TEXT NOT NULL,
+            deleted INTEGER NOT NULL CHECK(deleted IN (0,1)),
+            revision INTEGER NOT NULL, modified_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+            PRIMARY KEY(profile_id,kind,record_key)
+          );
+          CREATE INDEX watch_changes ON watch_records(profile_id,revision);
+          CREATE TABLE watch_operations (
+            profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE RESTRICT,
+            op_id TEXT NOT NULL, result_json TEXT NOT NULL, created_at INTEGER NOT NULL,
+            PRIMARY KEY(profile_id,op_id)
+          );
+          CREATE INDEX watch_operations_age ON watch_operations(created_at);
+        `);
+        db.prepare('INSERT INTO schema_migrations VALUES(2,?)').run(Date.now());
+      }
       db.exec('COMMIT');
     } catch (error) {
       db.exec('ROLLBACK');

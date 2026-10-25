@@ -42,7 +42,7 @@ export function assertSameOrigin(req: Request) {
   )
     throw new IdentityError('请求来源无效，请从本站操作', 403);
 }
-export async function jsonBody(req: Request, allowed: string[]) {
+export async function jsonBody(req: Request, allowed: string[], limit = 8192) {
   if (!req.headers.get('content-type')?.startsWith('application/json'))
     throw new IdentityError('需要 JSON 请求');
   const reader = req.body?.getReader();
@@ -54,7 +54,7 @@ export async function jsonBody(req: Request, allowed: string[]) {
     const result = await reader.read();
     if (result.done) break;
     bytes += result.value.byteLength;
-    if (bytes > 8192) {
+    if (bytes > limit) {
       await reader.cancel();
       throw new IdentityError('请求内容过大', 413);
     }

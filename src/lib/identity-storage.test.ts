@@ -43,7 +43,7 @@ describe('身份本地配置隔离', () => {
     setLocalIdentity('account-a', 'profile-a');
     const first = (await import('./db')).db;
     expect(first.name).toBe('putv-account-a-profile-a');
-    expect(first.verno).toBe(3);
+    expect(first.verno).toBe(4);
     setLocalIdentity('account-b', 'profile-b');
     expect((await import('./db')).db.name).toBe('putv-account-b-profile-b');
     expect(initial.name).not.toBe('libretv');

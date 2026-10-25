@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
+import { syncWatchNow } from '@/lib/watch-sync';
 import { api } from '@/lib/client-api';
 // 播放器（artplayer + hls.js）按需加载：拆出独立 chunk，不占首屏 First Load JS
 const PlayerShell = dynamic(() => import('@/components/player-shell').then((m) => m.PlayerShell), {
@@ -28,11 +29,11 @@ import { resolveSource, useAppStore } from '@/lib/store';
 import { qualityKey } from '@/lib/quality';
 import {
   clearProgress,
-  progressKeyOf,
+  getSavedProgress,
+  notifyWatch,
   saveProgress,
   updateHistoryProgress,
   upsertHistory,
-  db,
 } from '@/lib/db';
 import { cn } from '@/lib/utils';
 
@@ -160,9 +161,10 @@ function WatchContent() {
     const urlPos = parseInt(searchParams.get('position') || '0', 10) || 0;
     if (urlPos > 0) return urlPos;
     if (!vodId) return 0;
-    const entry = await db.progress.get(progressKeyOf(sourceKey, vodId, currentIndex));
-    return entry?.position ?? 0;
-  }, [searchParams, sourceKey, vodId, currentIndex]);
+    await Promise.race([syncWatchNow(),new Promise(resolve=>setTimeout(resolve,2000))]).catch(()=>{});
+    const entry = await getSavedProgress(sourceKey,vodId,currentIndex,source?.url);
+    return entry?.completed ? 0 : entry?.position ?? 0;
+  }, [searchParams, sourceKey, vodId, currentIndex,source?.url]);
 
   // 写入观看历史（进入页面即记录，进度后续增量更新）
   useEffect(() => {
@@ -189,12 +191,14 @@ function WatchContent() {
   const handleProgress = useCallback(
     (position: number, duration: number) => {
       if (vodId) {
-        saveProgress(sourceKey, vodId, currentIndex, position, duration).catch(() => {});
-        updateHistoryProgress(sourceKey, vodId || currentUrl, position, duration).catch(() => {});
+        saveProgress(sourceKey, vodId, currentIndex, position, duration,source?.url).catch(() => {});
+        updateHistoryProgress(sourceKey, vodId || currentUrl, position, duration,source?.url,currentIndex).catch(() => {});
       }
     },
-    [sourceKey, vodId, currentIndex, currentUrl]
+    [sourceKey, vodId, currentIndex, currentUrl,source?.url]
   );
+
+  const handlePause=useCallback((position:number,duration:number)=>{handleProgress(position,duration);notifyWatch(true);},[handleProgress]);
 
   // 自动连播的 800ms 延迟切集要在卸载时取消，避免离开页面后跳转
   const autoNextTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -203,11 +207,11 @@ function WatchContent() {
   }, []);
 
   const handleEnded = useCallback(() => {
-    if (vodId) clearProgress(sourceKey, vodId, currentIndex).catch(() => {});
+    if (vodId) clearProgress(sourceKey, vodId, currentIndex,source?.url).catch(() => {});
     if (store.autoplayNext && currentIndex < episodes.length - 1) {
       autoNextTimer.current = setTimeout(() => goEpisode(currentIndex + 1), 800);
     }
-  }, [store.autoplayNext, currentIndex, episodes.length, goEpisode, sourceKey, vodId]);
+  }, [store.autoplayNext, currentIndex, episodes.length, goEpisode, sourceKey, vodId,source?.url]);
 
   // 快捷键（Shift+I/O/S/E）记录片段：校验后写入
   const handleRecordSegment = useCallback(
@@ -332,7 +336,7 @@ function WatchContent() {
                   nextEpisodeKey={currentIndex + 1 < episodes.length ? `${sourceKey}:${vodId}:${currentIndex + 1}` : undefined}
                   getRestorePosition={getRestorePosition}
                   onTimeUpdate={handleProgress}
-                  onPause={handleProgress}
+                  onPause={handlePause}
                   onEnded={handleEnded}
                   hasPrevEpisode={currentIndex > 0}
                   hasNextEpisode={episodes.length > 0 && currentIndex < episodes.length - 1}

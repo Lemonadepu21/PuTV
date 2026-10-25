@@ -352,3 +352,11 @@ export function reloadIdentity() {
   try { localStorage.setItem('putv-identity-change', String(Date.now())); } catch { /* 隐私模式仍可刷新当前页 */ }
   window.location.replace('/');
 }
+
+export async function watchRequest<T>(url:string,context:string,body?:unknown,signal?:AbortSignal):Promise<T> {
+  const controller=new AbortController(),cancel=()=>controller.abort();
+  const timeout=setTimeout(cancel,10000);
+  if(signal?.aborted)cancel();else signal?.addEventListener('abort',cancel,{once:true});
+  try{return await request<T>(url,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json','X-PuTV-Context':context},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:controller.signal});}
+  finally{clearTimeout(timeout);signal?.removeEventListener('abort',cancel);}
+}

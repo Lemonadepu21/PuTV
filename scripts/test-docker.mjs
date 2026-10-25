@@ -16,6 +16,7 @@ function docker(args, input) {
   assert.equal(result.status, 0, result.stderr);
   return result.stdout.trim();
 }
+let watchContext = '';
 let cookie = '',
   device = '';
 async function call(
@@ -27,6 +28,7 @@ async function call(
   requestOrigin = origin
 ) {
   const headers = { origin: requestOrigin, cookie: session };
+  if (path.startsWith('/api/watch')) headers['X-PuTV-Context'] = watchContext;
   if (body !== undefined && !(body instanceof FormData))
     headers['Content-Type'] = 'application/json';
   const response = await fetch(origin + path, {
@@ -213,6 +215,168 @@ try {
   await call(`/api/profiles/${first}`, 'PATCH', { name: 'evil' }, cookie, 403);
   await call('/api/profiles/select', 'POST', { profileId: first }, cookie, 403);
   cookie = alice;
+  // 用保留账号/档案/会话的 v1 schema 验证真实升级。
+  remove();
+  docker([
+    'run',
+    '--rm',
+    '--network=host',
+    '-v',
+    `${volume}:/app/data`,
+    image,
+    'node',
+    '--input-type=module',
+    '-e',
+    `import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync(process.env.SQLITE_PATH);db.exec('DROP TABLE watch_records;DROP TABLE watch_operations;DROP TABLE watch_clock;DELETE FROM schema_migrations WHERE version=2');db.close();`,
+  ]);
+  await start();
+  const watchIdentity = await (await call('/api/auth/me')).json();
+  watchContext = `${watchIdentity.account.id}:${watchIdentity.profile.id}`;
+  const content = JSON.stringify(['source', 'https://cms.example/api', 'film']),
+    progressKey = JSON.stringify([
+      'source',
+      'https://cms.example/api',
+      'film',
+      0,
+    ]),
+    now = Date.now();
+  const history = {
+    opId: 'docker-history',
+    kind: 'history',
+    key: content,
+    baseRevision: 0,
+    modifiedAt: now,
+    deleted: false,
+    value: {
+      id: content,
+      sourceKey: 'source',
+      sourceUrl: 'https://cms.example/api',
+      vodId: 'film',
+      title: 'Fixture film',
+      episodeIndex: 0,
+      totalEpisodes: 2,
+      playbackPosition: 20,
+      duration: 100,
+      timestamp: now,
+    },
+  };
+  const progress = {
+    opId: 'docker-progress',
+    kind: 'progress',
+    key: progressKey,
+    baseRevision: 0,
+    modifiedAt: now,
+    deleted: false,
+    value: {
+      key: progressKey,
+      sourceKey: 'source',
+      sourceUrl: 'https://cms.example/api',
+      vodId: 'film',
+      episodeIndex: 0,
+      position: 20,
+      duration: 100,
+      updatedAt: now,
+    },
+  };
+  const synced = await (
+    await call('/api/watch', 'POST', { operations: [history, progress] })
+  ).json();
+  assert(synced.results.every((result) => result.status === 'applied'));
+  const duplicate = await (
+    await call('/api/watch', 'POST', { operations: [history, progress] })
+  ).json();
+  assert(duplicate.results.every((result) => result.status === 'duplicate'));
+  const page = await (await call('/api/watch')).json();
+  assert.equal(page.records.length, 2);
+  const loginOther = await call(
+    '/api/auth/login',
+    'POST',
+    { username: 'alice', password },
+    ''
+  );
+  const secondDevice = loginOther.headers
+    .getSetCookie()
+    .find((c) => c.startsWith('putv_session='))
+    .split(';')[0];
+  await call(
+    '/api/profiles/select',
+    'POST',
+    { profileId: watchIdentity.profile.id },
+    secondDevice
+  );
+  assert.equal(
+    (await (await call('/api/watch', 'GET', undefined, secondDevice)).json())
+      .records.length,
+    2
+  );
+  const changed = {
+    ...progress,
+    opId: 'docker-backward',
+    baseRevision: synced.results[1].record.revision,
+    modifiedAt: Date.now(),
+    value: { ...progress.value, position: 5, updatedAt: Date.now() },
+  };
+  assert.equal(
+    (
+      await (
+        await call(
+          '/api/watch',
+          'POST',
+          { operations: [changed] },
+          secondDevice
+        )
+      ).json()
+    ).results[0].status,
+    'applied'
+  );
+  const imported = await (
+    await call('/api/watch/import', 'POST', {
+      operations: [{ ...history, opId: 'docker-import' }],
+    })
+  ).json();
+  assert.equal(imported.counts.skipped, 1);
+  const latest = await (await call('/api/watch')).json();
+  const cleared = await (
+    await call('/api/watch', 'POST', {
+      operations: [
+        {
+          opId: 'docker-clear',
+          kind: 'clear',
+          key: '',
+          value: null,
+          deleted: true,
+          baseRevision: latest.records.at(-1).revision,
+          modifiedAt: Date.now(),
+        },
+      ],
+    })
+  ).json();
+  const barrier = cleared.results[0].record.revision;
+  assert.equal(
+    (
+      await (
+        await call('/api/watch', 'POST', {
+          operations: [{ ...progress, opId: 'docker-old-snapshot' }],
+        })
+      ).json()
+    ).results[0].status,
+    'conflict'
+  );
+  const finalProgress = {
+    ...progress,
+    opId: 'docker-final',
+    baseRevision: barrier,
+    modifiedAt: Date.now(),
+    value: { ...progress.value, position: 65, updatedAt: Date.now() },
+  };
+  assert.equal(
+    (
+      await (
+        await call('/api/watch', 'POST', { operations: [finalProgress] })
+      ).json()
+    ).results[0].status,
+    'applied'
+  );
   docker([
     'exec',
     '-d',
@@ -281,15 +445,30 @@ try {
     401
   );
   await login('alice');
+  await call('/api/profiles/select', 'POST', {
+    profileId: watchIdentity.profile.id,
+  });
   const persistent = cookie;
   docker(['restart', name]);
   await new Promise((resolve) => setTimeout(resolve, 1500));
   await call('/api/auth/me', 'GET', undefined, persistent);
+  assert.equal(
+    (await (await call('/api/watch')).json()).records.find(
+      (r) => r.kind === 'progress' && !r.deleted
+    ).value.position,
+    65
+  );
   remove();
   await start('rotated-invite', 'false');
   me = await (await call('/api/auth/me', 'GET', undefined, persistent)).json();
   assert.equal(me.account.id, account);
   cookie = persistent;
+  assert.equal(
+    (await (await call('/api/watch')).json()).records.find(
+      (r) => r.kind === 'progress' && !r.deleted
+    ).value.position,
+    65
+  );
   await call(`/api/profiles/${first}/avatar`);
   await call('/api/auth/register', 'POST', {}, '', 403);
   await login('alice');
@@ -328,9 +507,12 @@ try {
   await call('/api/profiles', 'GET', undefined, resetSession);
   await call(`/api/admin/accounts/${account}/revoke-sessions`, 'POST');
   await call('/api/profiles', 'GET', undefined, resetSession, 401);
-  const adminIdentity=await(await call('/api/auth/me')).json();
-  await call(`/api/admin/accounts/${adminIdentity.account.id}/revoke-sessions`,'POST');
-  await call('/api/admin/accounts','GET',undefined,cookie,401);
+  const adminIdentity = await (await call('/api/auth/me')).json();
+  await call(
+    `/api/admin/accounts/${adminIdentity.account.id}/revoke-sessions`,
+    'POST'
+  );
+  await call('/api/admin/accounts', 'GET', undefined, cookie, 401);
   remove();
   await start('test-invite', 'true', true);
   const error = await (
@@ -338,7 +520,7 @@ try {
   ).json();
   assert.match(error.error, /持久化目录/);
   console.log(
-    'PASS: 生产镜像非 root、管理员 CLI、注册/登录/CSRF/隔离/撤销、头像处理、重启/重建持久化、邀请码轮换、关闭注册、IPTV/EPG/HLS 及写权限失败'
+    'PASS: 生产镜像非 root、v1→v2 迁移、历史/分集进度/删除屏障/重建持久化、管理员 CLI、注册/登录/CSRF/隔离/撤销、头像处理、重启/重建持久化、邀请码轮换、关闭注册、IPTV/EPG/HLS 及写权限失败'
   );
 } finally {
   remove();

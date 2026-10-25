@@ -232,7 +232,7 @@ describe('会话、权限与持久化', () => {
     expect(resolveSession(s.token)?.account.id).toBe(s.account.id);
     expect(
       database().prepare('SELECT COUNT(*) n FROM schema_migrations').get()!.n
-    ).toBe(1);
+    ).toBe(2);
   });
   it('status 未登录不泄漏预置私有源、邀请或摘要', async () => {
     process.env.DEFAULT_SOURCES =
