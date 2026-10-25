@@ -158,7 +158,7 @@ jobs:
             echo "sha256sum -c SHA256SUMS"
             echo "mkdir -p putv"
             echo "tar -xzf putv-${VER}-standalone.tar.gz -C putv"
-            echo "cd putv && PASSWORD=your-password PORT=8081 node server.js"
+            echo "cd putv && PASSWORD=your-password PORT=8080 node server.js"
             echo '```'
             echo
             echo '预构建包与 CPU 架构无关（x86_64 / arm64 / armv7），环境变量与 Docker 部署一致。'

@@ -5,9 +5,9 @@
   "description": "基于 LibreTV 的影视聚合搜索与观看平台",
   "license": "AGPL-3.0-or-later",
   "scripts": {
-    "dev": "next dev --hostname 0.0.0.0 -p 8081",
+    "dev": "next dev --hostname 0.0.0.0 -p 8080",
     "build": "next build",
-    "start": "next start --hostname 0.0.0.0 -p 8081",
+    "start": "next start --hostname 0.0.0.0 -p 8080",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

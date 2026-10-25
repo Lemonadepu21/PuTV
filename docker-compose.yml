@@ -9,7 +9,7 @@ services:
     container_name: putv
     restart: unless-stopped
     ports:
-      - "${PUTV_PORT:-8081}:8080"
+      - "${PUTV_PORT:-8080}:8080"
     # 无状态服务：观看历史在浏览器 IndexedDB、设置在 localStorage，无需挂载卷
     environment:
       # 必填：访问密码（在 .env 中设置，缺失时 compose 启动即报错提醒）

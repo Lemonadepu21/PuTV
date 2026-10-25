@@ -19,7 +19,7 @@ PuTv 在保留上游功能的基础上调整界面和移动端操作。项目仍
 
 ## 部署
 
-默认使用 **8081** 端口，可与使用 8080 的 LibreTV 并行运行。Docker 与源码部署选择一种即可；同一台机器同时运行两份 PuTv 时需使用不同端口。
+默认使用 **8080** 端口；如果已有其他服务使用该端口，请先停止旧服务或按下方说明换端口。Docker 与源码部署选择一种即可；同一台机器同时运行两份 PuTv 时需使用不同端口。
 
 ### 方式一：Docker 构建部署
 
@@ -37,7 +37,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-访问 `http://localhost:8081`；同一局域网的其他设备使用 `http://机器局域网IP:8081`。
+访问 `http://localhost:8080`；同一局域网的其他设备使用 `http://机器局域网IP:8080`。
 
 ```sh
 docker compose logs -f putv
@@ -66,7 +66,7 @@ npm run build
 npm start
 ```
 
-访问 `http://localhost:8081`。默认监听所有网络接口；在公网使用时请通过 HTTPS 反向代理或 Tailscale Funnel 接入，并保留密码保护。
+访问 `http://localhost:8080`。默认监听所有网络接口；在公网使用时请通过 HTTPS 反向代理或 Tailscale Funnel 接入，并保留密码保护。
 
 需要更改源码部署的端口时：
 
@@ -74,7 +74,20 @@ npm start
 npx next start --hostname 0.0.0.0 --port 9090
 ```
 
-开发模式使用 `npm run dev`，同样运行在 8081。生产环境使用上面的构建及启动命令。
+开发模式使用 `npm run dev`，同样运行在 8080。生产环境使用上面的构建及启动命令。
+
+### 本机 systemd 服务（可选）
+
+仓库提供 `putv.service`，默认目录为 `~/Coding/PuTv`、Node 路径为 `/usr/bin/node`、端口为 8080；目录或 Node 路径不同时先编辑服务文件。先完成上面的源码构建并配置 `.env`，然后运行：
+
+```sh
+mkdir -p ~/.config/systemd/user
+ln -s "$PWD/putv.service" ~/.config/systemd/user/putv.service
+systemctl --user daemon-reload
+systemctl --user enable --now putv
+```
+
+查看 / 重启 / 停止：`systemctl --user status putv`、`systemctl --user restart putv`、`systemctl --user stop putv`。默认随用户会话启动；需要无人登录时启动，由部署者按系统策略配置 user lingering。
 
 ### 配置
 
@@ -83,7 +96,7 @@ npx next start --hostname 0.0.0.0 --port 9090
 | 变量 | 说明 |
 | --- | --- |
 | `PASSWORD` | 必填，网站访问密码 |
-| `PUTV_PORT` | Docker 对外端口，默认 `8081` |
+| `PUTV_PORT` | Docker 对外端口，默认 `8080` |
 | `DEFAULT_SOURCES` | 默认点播源 JSON 数组，默认 `[]` |
 | `DEFAULT_LIVE_SOURCES` | 默认直播源 JSON 数组，默认 `[]` |
 | `DEFAULT_SUBSCRIPTIONS` | 默认数据源订阅 JSON 数组，默认 `[]` |
@@ -170,7 +183,7 @@ git merge v<版本>
 构建包不应包含 `.env` 或密码。Docker 构建排除环境文件；standalone 发布工作流会删除产物中的环境文件并进行检查。运行已发布 standalone 包时通过环境变量传入密码及端口，例如：
 
 ```sh
-PASSWORD='你的访问密码' PORT=8081 HOSTNAME=0.0.0.0 node server.js
+PASSWORD='你的访问密码' PORT=8080 HOSTNAME=0.0.0.0 node server.js
 ```
 
 ## 开源与来源
