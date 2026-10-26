@@ -35,7 +35,9 @@ import {
   updateHistoryProgress,
   upsertHistory,
 } from '@/lib/db';
-import { cn } from '@/lib/utils';
+import { cn, buildImageCandidates } from '@/lib/utils';
+import { watchTitle } from '@/lib/watch-title';
+import { bindMediaMetadata } from '@/lib/media-metadata';
 
 /**
  * 播放页（唯一入口，替代旧版 watch.html → player.html 跳转链）。
@@ -129,6 +131,20 @@ function WatchContent() {
     if (episodes.length > 0) return Math.min(Math.max(indexParam, 0), episodes.length - 1);
     return indexParam;
   }, [episodes, indexParam]);
+
+  const pageTitle = watchTitle(videoTitle, currentIndex, episodes.length, detailQuery.data?.videoInfo?.typeName);
+  useEffect(() => {
+    const previous = document.title;
+    document.title = pageTitle;
+    return () => {
+      if (document.title === pageTitle) document.title = previous;
+    };
+  }, [pageTitle]);
+
+  const cover = detailQuery.data?.videoInfo?.cover;
+  useEffect(() => bindMediaMetadata(pageTitle,
+    buildImageCandidates(cover, store.imageProxyMode, store.customImageProxy), window.location.href),
+  [pageTitle, cover, store.imageProxyMode, store.customImageProxy]);
 
   // 跳过片段按剧名记忆：换集不变，换源到同名资源也能命中。
   // 标题缺失（直连链接）时退回 source:vodId，至少保证本源本片可用。
