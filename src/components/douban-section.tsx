@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/client-api';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import type { DoubanItem } from '@/lib/types';
 import type { BrowseCategory } from '@/lib/browse-categories';
 import { RecommendationLayout } from './recommendation-layout';
+import { HomeRecommendations } from './home-recommendations';
 
 const MOVIE_TAGS = ['热门', '最新', '经典', '豆瓣高分', '冷门佳片', '华语', '欧美', '韩国', '日本', '动画'];
 const TV_TAGS = ['热门', '美剧', '英剧', '韩剧', '日剧', '国产剧', '港剧', '日本动画', '综艺', '纪录片'];
@@ -27,9 +28,47 @@ export function RecommendSection({ onPick }: { onPick: (title: string) => void }
 /** 分类只复用当前推荐接口，首页来源偏好不因导航而改变。 */
 export function CategorySection({ category, onPick }: { category: BrowseCategory; onPick: (title: string) => void }) {
   const source = useAppStore((s) => s.recommendSource);
+  if (category === 'movie') return <MovieCategory onPick={onPick} />;
   if (category === 'anime') return <BangumiView layout="grid" onPick={onPick} />;
   if (source === 'hot-list') return <HotListView category={category} layout="grid" onPick={onPick} />;
   return <DoubanView category={category} layout="grid" onPick={onPick} />;
+}
+
+/** 电影浏览独立于首页偏好，按需加载当前标签。 */
+function MovieCategory({ onPick }: { onPick: (title: string) => void }) {
+  const [tag, setTag] = useState('热门');
+  const weekly = tag === '电影周榜';
+  const week = useQuery({
+    queryKey: ['hot-list', 'douban_movie_weekly'],
+    queryFn: ({ signal }) => api.hotList('douban_movie_weekly', signal),
+    enabled: weekly,
+  });
+  const movies = useInfiniteQuery({
+    queryKey: ['movie-browse', tag], initialPageParam: 0,
+    queryFn: async ({ signal, pageParam }) => (await api.douban('movie', tag, pageParam, 50, signal)).items,
+    getNextPageParam: (last, pages, offset) => {
+      const seen = new Set(pages.slice(0, -1).flat().map((item) => item.id));
+      return last.length === 50 && last.some((item) => !seen.has(item.id)) ? offset + 50 : undefined;
+    },
+    enabled: !weekly,
+  });
+  const items = weekly ? week.data?.items ?? [] : Array.from(new Map(movies.data?.pages.flat().map((item) => [item.id, item])).values());
+  const query = weekly ? week : movies;
+  return <>
+    <RecommendationLayout layout="grid" title={weekly ? tag : `${tag}电影`} items={items}
+      loading={query.isPending} error={query.isError && items.length === 0}
+      onRetry={() => { void query.refetch(); }} onPick={onPick}>
+      <div className="flex flex-wrap gap-1.5">
+        {['电影周榜', ...MOVIE_TAGS].map((name) => <ChipButton key={name} active={tag === name} onClick={() => setTag(name)}>{name}</ChipButton>)}
+      </div>
+    </RecommendationLayout>
+    {!weekly && items.length > 0 && (movies.hasNextPage || movies.isFetchNextPageError) && <div className="content-container mt-8 text-center">
+      {movies.isFetchNextPageError && <p role="status" className="mb-3 text-sm text-muted">加载失败，请重试</p>}
+      <button type="button" className="btn-ghost min-h-11" disabled={movies.isFetchingNextPage} onClick={() => { void movies.fetchNextPage(); }}>
+        {movies.isFetchingNextPage ? '加载中…' : movies.isFetchNextPageError ? '重试' : '加载更多'}
+      </button>
+    </div>}
+  </>;
 }
 
 /**
@@ -54,8 +93,9 @@ function DoubanView({ onPick, category, layout = 'home' }: { onPick: (title: str
     setTag('热门');
   };
 
+  const Layout = layout === 'home' ? HomeRecommendations : RecommendationLayout;
   return (
-    <RecommendationLayout
+    <Layout
       layout={layout}
       title={`${tag}${type === 'movie' ? '电影' : '剧集'}`}
       items={items} loading={query.isLoading} error={query.isError}
@@ -89,7 +129,7 @@ function DoubanView({ onPick, category, layout = 'home' }: { onPick: (title: str
           </button>
         ))}
       </div>
-    </RecommendationLayout>
+    </Layout>
   );
 }
 
@@ -109,8 +149,9 @@ function BangumiView({ onPick, layout = 'home' }: { onPick: (title: string) => v
       : (query.data.days.find((d) => d.weekday === weekday)?.items ?? []);
   }
 
+  const Layout = layout === 'home' ? HomeRecommendations : RecommendationLayout;
   return (
-    <RecommendationLayout
+    <Layout
       layout={layout}
       title={weekday === 'all' ? '新番放送' : `${WEEKDAYS[weekday - 1]}新番`}
       items={items} loading={query.isLoading} error={query.isError}
@@ -126,7 +167,7 @@ function BangumiView({ onPick, layout = 'home' }: { onPick: (title: string) => v
           </ChipButton>
         ))}
       </div>
-    </RecommendationLayout>
+    </Layout>
   );
 }
 
@@ -153,8 +194,9 @@ function HotListView({ onPick, category, layout = 'home' }: { onPick: (title: st
 
   const items = query.data?.items ?? [];
 
+  const Layout = layout === 'home' ? HomeRecommendations : RecommendationLayout;
   return (
-    <RecommendationLayout
+    <Layout
       layout={layout}
       title={lists.find((list) => list.id === listId)!.label}
       items={items} loading={query.isLoading} error={query.isError}
@@ -167,7 +209,7 @@ function HotListView({ onPick, category, layout = 'home' }: { onPick: (title: st
           </ChipButton>
         ))}
       </div>
-    </RecommendationLayout>
+    </Layout>
   );
 }
 

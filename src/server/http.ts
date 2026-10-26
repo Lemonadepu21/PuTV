@@ -21,26 +21,27 @@ export function requireIdentity(req: Request, admin = false): Identity {
     throw new IdentityError('需要管理员权限', 403);
   return identity;
 }
-export function assertSameOrigin(req: Request) {
-  let expected: URL;
+export function assertSameOrigin(req: Request): URL {
+  let allowed: URL[];
   try {
-    expected = new URL(process.env.APP_ORIGIN || req.url);
+    allowed = [process.env.APP_ORIGIN || new URL(req.url).origin,
+      ...(process.env.APP_ALLOWED_ORIGINS || '').split(',').map((value) => value.trim()).filter(Boolean),
+    ].map((value) => {
+      const url = new URL(value);
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password ||
+        url.pathname !== '/' || url.search || url.hash || url.hostname.includes('*')) throw new Error('origin');
+      return url;
+    });
   } catch {
-    throw new IdentityError('APP_ORIGIN 配置无效', 503);
+    throw new IdentityError('APP_ORIGIN / APP_ALLOWED_ORIGINS 配置无效', 503);
   }
-  if (
-    process.env.NODE_ENV === 'production' &&
-    expected.protocol !== 'https:' &&
-    process.env.ALLOW_INSECURE_HTTP !== 'true'
-  )
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_INSECURE_HTTP !== 'true' &&
+    allowed.some((url) => url.protocol !== 'https:'))
     throw new IdentityError('生产环境需要 HTTPS 和 APP_ORIGIN 配置', 503);
-  const origin = req.headers.get('origin');
-  if (
-    !origin ||
-    origin !== expected.origin ||
-    req.headers.get('sec-fetch-site') === 'cross-site'
-  )
+  const expected = allowed.find((url) => url.origin === req.headers.get('origin'));
+  if (!expected || req.headers.get('sec-fetch-site') === 'cross-site')
     throw new IdentityError('请求来源无效，请从本站操作', 403);
+  return expected;
 }
 export async function jsonBody(req: Request, allowed: string[], limit = 8192) {
   if (!req.headers.get('content-type')?.startsWith('application/json'))
@@ -115,6 +116,7 @@ export function loginResponse(
   accountId: string,
   credentialHash?: string
 ) {
+  const origin = assertSameOrigin(req);
   const prior = cookieValue(req.headers.get('cookie'), DEVICE_COOKIE);
   const device =
     prior && /^[a-f0-9]{32}$/.test(prior)
@@ -134,7 +136,7 @@ export function loginResponse(
     process.env.COOKIE_SECURE === 'true' ||
     (process.env.ALLOW_INSECURE_HTTP !== 'true' &&
       process.env.NODE_ENV === 'production') ||
-    new URL(process.env.APP_ORIGIN || req.url).protocol === 'https:';
+    origin.protocol === 'https:';
   const options = {
     httpOnly: true,
     sameSite: 'lax' as const,

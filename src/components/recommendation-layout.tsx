@@ -10,9 +10,10 @@ import { HorizontalShelf } from './horizontal-shelf';
 import { ContinueWatching } from './continue-watching';
 
 export function RecommendationLayout({
-  title, items, loading, error, onRetry, onPick, children, layout = 'home',
+  title, items, loading, error, onRetry, onPick, children, layout = 'home', emptyText = '该分类暂无推荐内容',
 }: {
   layout?: 'home' | 'grid';
+  emptyText?: string;
   title: string;
   items: DoubanItem[];
   loading: boolean;
@@ -36,7 +37,7 @@ export function RecommendationLayout({
         ) : loading ? (
           <ShelfSkeleton layout={layout} />
         ) : items.length === 0 ? (
-          <p role="status" className="py-10 text-sm text-muted">该分类暂无推荐内容</p>
+          <p role="status" className="py-10 text-sm text-muted">{emptyText}</p>
         ) : layout === 'grid' ? (
           <div className="poster-grid" role="list" aria-label={title}>
             {items.map((item) => <div role="listitem" key={item.id} className="min-w-0"><DoubanCard item={item} onClick={() => onPick(item.title)} /></div>)}

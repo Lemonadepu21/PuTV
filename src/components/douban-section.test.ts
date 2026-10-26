@@ -10,7 +10,8 @@ vi.mock('@/lib/store', () => ({ useAppStore: (select: (state: typeof preferences
 
 function render(category: BrowseCategory, key: string[], data: unknown) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(key, data);
+  if (key[0] === 'movie-browse') client.setQueryData(key, { pages: [(data as { items: unknown[] }).items], pageParams: [0] });
+  else client.setQueryData(key, data);
   return renderToStaticMarkup(createElement(QueryClientProvider, { client },
     createElement(CategorySection, { category, onPick: () => {} })
   ));
@@ -20,11 +21,12 @@ const movie = { id: '1', title: '缓存影片', cover: '' };
 beforeEach(() => { preferences.recommendSource = 'hot-list'; });
 
 describe('分类复用原推荐数据', () => {
-  it('电影分类复用电影周榜缓存，使用网格且不渲染首页 Hero', () => {
-    const html = render('movie', ['hot-list', 'douban_movie_weekly'], { items: [movie] });
+  it('电影分类展示独立标签和网格，不渲染首页 Hero', () => {
+    const html = render('movie', ['movie-browse', '热门'], { items: [movie] });
     expect(html).toContain('查找 缓存影片 的片源');
     expect(html).toContain('poster-grid');
     expect(html).not.toContain('精选影视');
+    for (const tag of ['电影周榜', '最新', '经典', '豆瓣高分', '欧美', '动画']) expect(html).toContain(tag);
     expect(html).not.toContain('国产剧周榜');
   });
 
@@ -38,7 +40,7 @@ describe('分类复用原推荐数据', () => {
 
   it.each(['douban', 'bangumi'])('%s 偏好下的电影分类复用豆瓣电影和原有标签', (source) => {
     preferences.recommendSource = source;
-    const html = render('movie', ['douban', 'movie', '热门'], { items: [movie] });
+    const html = render('movie', ['movie-browse', '热门'], { items: [movie] });
     expect(html).toContain('查找 缓存影片 的片源');
     expect(html).toContain('热门电影');
     expect(html).toContain('豆瓣高分');

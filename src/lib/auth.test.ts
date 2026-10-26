@@ -471,6 +471,51 @@ describe('CSRF、限流与图片', () => {
     ).rejects.toThrow('JSON');
     expect(() => assertSameOrigin(req('/api/auth/login', {}))).not.toThrow();
   });
+  it('显式允许 Funnel 与局域网，仍拒绝其他来源、跨站及伪造代理头', () => {
+    vi.stubEnv('APP_ORIGIN', 'https://funnel.example.ts.net');
+    vi.stubEnv('APP_ALLOWED_ORIGINS', 'http://192.168.1.2:8080, https://second.example');
+    vi.stubEnv('ALLOW_INSECURE_HTTP', 'true');
+    for (const origin of ['https://funnel.example.ts.net', 'http://192.168.1.2:8080', 'https://second.example'])
+      expect(assertSameOrigin(req('/api/auth/login', {}, undefined, origin)).origin).toBe(origin);
+    for (const origin of ['https://evil.test', 'https://funnel.example.ts.net.evil.test', 'http://192.168.1.2:8082', 'null'])
+      expect(() => assertSameOrigin(req('/api/auth/login', {}, undefined, origin))).toThrow('来源');
+    const spoofed = req('/api/auth/login', {}, undefined, 'https://evil.test');
+    spoofed.headers.set('x-forwarded-host', 'funnel.example.ts.net');
+    spoofed.headers.set('x-forwarded-proto', 'https');
+    expect(() => assertSameOrigin(spoofed)).toThrow('来源');
+    const cross = req('/api/auth/login', {}, undefined, 'https://funnel.example.ts.net');
+    cross.headers.set('sec-fetch-site', 'cross-site');
+    expect(() => assertSameOrigin(cross)).toThrow('来源');
+    cross.headers.delete('origin');
+    expect(() => assertSameOrigin(cross)).toThrow('来源');
+  });
+  it('无效额外来源和未显式允许的 HTTP 配置不能放宽校验', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('APP_ORIGIN', 'https://local.test');
+    vi.stubEnv('ALLOW_INSECURE_HTTP', 'false');
+    for (const value of ['*', 'https://*.example', 'https://local.test/path', 'https://user:pass@local.test', 'ftp://local.test', 'http://192.168.1.2:8080']) {
+      vi.stubEnv('APP_ALLOWED_ORIGINS', value);
+      expect(() => assertSameOrigin(req('/api/auth/login', {}))).toThrow();
+    }
+  });
+  it('反向代理的 HTTPS 登录使用 Secure，显式放行的局域网登录仍可保持会话', async () => {
+    const s = await session();
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('ALLOW_INSECURE_HTTP', 'true');
+    vi.stubEnv('COOKIE_SECURE', 'false');
+    vi.stubEnv('APP_ORIGIN', 'https://funnel.example.ts.net');
+    vi.stubEnv('APP_ALLOWED_ORIGINS', 'http://192.168.1.2:8080');
+    for (const origin of ['https://funnel.example.ts.net', 'http://192.168.1.2:8080']) {
+      const response = await login(req('/api/auth/login', { username: s.identity.account.username, password: pass }, undefined, origin));
+      expect(response.status).toBe(200);
+      const cookie = response.headers.get('set-cookie') || '';
+      expect(cookie.includes('Secure')).toBe(origin.startsWith('https:'));
+      expect(cookie).toContain('HttpOnly');
+      expect(cookie).toContain('SameSite=lax');
+      const token = cookie.match(/putv_session=([^;]+)/)?.[1];
+      expect(token && resolveSession(token)?.account.id).toBe(s.identity.account.id);
+    }
+  });
   it('持久化限流不受伪造代理 IP 影响', () => {
     for (let i = 0; i < 10; i++)
       expect(rateLimit('account:alice', 10)).toBe(true);
