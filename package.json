@@ -1,6 +1,6 @@
 {
   "name": "putv",
-  "version": "2.21.1-putv.1",
+  "version": "2.22.0-putv.1",
   "private": true,
   "description": "基于 LibreTV 的影视聚合搜索与观看平台",
   "license": "AGPL-3.0-or-later",
@@ -28,6 +28,7 @@
     "react-dom": "^19.0.0",
     "server-only": "0.0.1",
     "sharp": "0.35.4",
+    "undici": "^6.29.1",
     "zustand": "^5.0.2"
   },
   "devDependencies": {

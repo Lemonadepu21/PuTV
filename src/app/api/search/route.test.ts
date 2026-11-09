@@ -1,3 +1,8 @@
+vi.mock('@/lib/ssrf', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/lib/ssrf')>(),
+  fetchWithSSRFProtection: (input: string, init: RequestInit) => fetch(input, init),
+}));
+
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { POST } from './route';
 import { SESSION_COOKIE } from '@/lib/auth';

@@ -1,4 +1,7 @@
+import type { LookupAddress } from 'node:dns';
+import { lookup as callbackLookup } from 'node:dns';
 import dns from 'node:dns/promises';
+import { Agent, buildConnector, fetch as undiciFetch } from 'undici';
 
 /** 去掉 URL.hostname 对 IPv6 附加的方括号（"[::1]" → "::1"） */
 function stripBrackets(host: string): string {
@@ -107,4 +110,109 @@ export async function checkLiveUrlAllowed(urlString: string): Promise<UpstreamVe
   }
   if (allowLivePrivate()) return { ok: true };
   return checkUpstreamAllowed(urlString);
+}
+
+
+/**
+ * 创建受连接级 SSRF / DNS Rebinding 防护的专用 undici Agent。
+ *
+ * 核心机制（解决 #941）：
+ * 1. 独立 Dispatcher：避免复用全局或其他作用域的连接池，杜绝通过已有的 keep-alive socket 绕过连接层校验；
+ * 2. 连接前检查：拦截目标为字面量私网 IP 及黑名单主机名（如 127.0.0.1、localhost）；
+ * 3. 连接时 DNS 校验：通过 safeLookup（使用标准 callback 签名的 node:dns 接口）解析域名，
+ *    只要解析结果包含任何私网/保留 IP，立即抛出 ERR_SSRF_BLOCKED 中断连接，杜绝 DNS Rebinding TOCTOU 绕过；
+ * 4. 禁用连接保活：使用完毕即释放连接，不留复用窗口。
+ */
+export function createSSRFAgent(options: { allowPrivate?: boolean } = {}): Agent {
+  const { allowPrivate = false } = options;
+
+  function safeLookup(
+    hostname: string,
+    opts: unknown,
+    cb: (err: NodeJS.ErrnoException | null, address?: string | LookupAddress[], family?: number) => void
+  ): void {
+    const cleanHost = stripBrackets(hostname);
+    if (!allowPrivate && BLOCKED_HOSTNAMES.has(cleanHost.toLowerCase())) {
+      const blockErr = Object.assign(new Error(`目标主机名在黑名单中 (${hostname})`), {
+        code: 'ERR_SSRF_BLOCKED',
+      });
+      return cb(blockErr, '');
+    }
+
+    callbackLookup(cleanHost, { all: true }, (err, addresses) => {
+      if (err) return cb(err, '');
+      const list = Array.isArray(addresses) ? addresses : [];
+      if (list.length === 0) {
+        return cb(new Error(`未找到主机地址: ${hostname}`), '');
+      }
+      if (!allowPrivate) {
+        for (const item of list) {
+          if (isPrivateIP(item.address)) {
+            const blockErr = Object.assign(new Error(`目标地址解析到私有/保留网络 (${item.address})`), {
+              code: 'ERR_SSRF_BLOCKED',
+            });
+            return cb(blockErr, '');
+          }
+        }
+      }
+
+      const wantAll = opts && typeof opts === 'object' && (opts as { all?: boolean }).all;
+      if (wantAll) {
+        cb(null, list);
+      } else {
+        cb(null, list[0].address, list[0].family);
+      }
+    });
+  }
+
+  const baseConnector = buildConnector({
+    lookup: safeLookup as unknown as (hostname: string, options: import('node:dns').LookupOptions, callback: (err: NodeJS.ErrnoException | null, address: string | import('node:dns').LookupAddress[], family?: number) => void) => void,
+  });
+
+  function ssrfConnect(opts: buildConnector.Options, cb: buildConnector.Callback) {
+    const cleanHost = stripBrackets(opts.hostname || '');
+    if (!allowPrivate) {
+      if (BLOCKED_HOSTNAMES.has(cleanHost.toLowerCase())) {
+        const blockErr = Object.assign(new Error(`目标主机名在黑名单中 (${cleanHost})`), {
+          code: 'ERR_SSRF_BLOCKED',
+        });
+        return cb(blockErr, null);
+      }
+      if (/^\d{1,3}(\.\d{1,3}){3}$/.test(cleanHost) || cleanHost.includes(':')) {
+        if (isPrivateIP(cleanHost)) {
+          const blockErr = Object.assign(new Error(`目标地址属于私有/保留网络 (${cleanHost})`), {
+            code: 'ERR_SSRF_BLOCKED',
+          });
+          return cb(blockErr, null);
+        }
+      }
+    }
+    return baseConnector(opts, cb);
+  }
+
+  return new Agent({
+    connect: ssrfConnect,
+    pipelining: 0,
+    keepAliveTimeout: 1,
+    keepAliveMaxTimeout: 1,
+  });
+}
+
+/** 每次上游请求使用独立连接，保留流式响应直至读取或取消。 */
+export async function fetchWithSSRFProtection(
+  input: string,
+  init: RequestInit,
+  options: { allowPrivate?: boolean } = {},
+): Promise<Response> {
+  const agent = createSSRFAgent(options);
+  const request: RequestInit & { dispatcher: Agent } = { ...init, dispatcher: agent };
+  try {
+    // fetch 与 dispatcher 使用同一版本，避免 Node 内置 Undici 的接口差异。
+    const response = await undiciFetch(input, request as Parameters<typeof undiciFetch>[1]);
+    void agent.close().catch(() => {});
+    return response as unknown as Response;
+  } catch (error) {
+    void agent.destroy().catch(() => {});
+    throw error;
+  }
 }

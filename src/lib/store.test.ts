@@ -526,3 +526,40 @@ describe('跨设备历史的片源恢复',()=>{
   it('新设备未配置来源时使用历史记录的 API 地址',()=>{expect(resolveSource({customAPIs:[],envSources:[]},'custom_0',{url:'https://original.example/api'})).toMatchObject({key:'custom_0',url:'https://original.example/api'});});
   it('相同短 ID 但 URL 不同不能误用新设备的另一个片源',()=>{const source={key:'custom_0',name:'Other source',url:'https://other.example/api'};const state={customAPIs:[source],envSources:[]};expect(resolveSource(state,'custom_0',{url:'https://original.example/api'})).toHaveProperty('url','https://original.example/api');expect(resolveSource(state,'custom_0')).toEqual(source);});
 });
+
+describe('音量放大设置项', () => {
+  it('volumeBoost 出厂默认关闭：增益与音量滑块相乘，会让所有档位响度整体抬高，必须用户显式开启', () => {
+    expect(store().volumeBoost).toBe(false);
+  });
+
+  it('volumeBoost 可通过 updateSettings 切换（设置页与播放器共用同一份状态）', () => {
+    store().updateSettings({ volumeBoost: true });
+    expect(store().volumeBoost).toBe(true);
+    store().updateSettings({ volumeBoost: false });
+    expect(store().volumeBoost).toBe(false);
+  });
+});
+
+describe('底部细进度条设置项', () => {
+  it('miniProgressBar 默认关闭，保持 PuTV 的现有行为', () => {
+    expect(store().miniProgressBar).toBe(false);
+  });
+
+  it('miniProgressBar 可通过 updateSettings 切换（设置页与播放器共用同一份状态）', () => {
+    store().updateSettings({ miniProgressBar: false });
+    expect(store().miniProgressBar).toBe(false);
+    store().updateSettings({ miniProgressBar: true });
+    expect(store().miniProgressBar).toBe(true);
+    store().updateSettings({ miniProgressBar: false });
+  });
+
+  it('partialize 会带上 miniProgressBar：漏写就只活在内存里，刷新即回默认', () => {
+    const options = useAppStore.persist.getOptions() as unknown as {
+      partialize: (s: unknown) => Record<string, unknown>;
+    };
+    expect(options.partialize(store()).miniProgressBar).toBe(false);
+    store().updateSettings({ miniProgressBar: true });
+    expect(options.partialize(store()).miniProgressBar).toBe(true);
+    store().updateSettings({ miniProgressBar: false });
+  });
+});

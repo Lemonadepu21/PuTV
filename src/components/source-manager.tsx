@@ -584,6 +584,18 @@ function PlaybackPanel() {
           checked={store.autoSkipSegments}
           onChange={(v) => store.updateSettings({ autoSkipSegments: v })}
         />
+        <ToggleRow
+          label="音量增强"
+          description="放大播放音量，适合声音偏小的片源"
+          checked={store.volumeBoost}
+          onChange={(v) => store.updateSettings({ volumeBoost: v })}
+        />
+        <ToggleRow
+          label="底部细进度条"
+          description="控制栏收起时，在画面底边显示播放进度"
+          checked={store.miniProgressBar}
+          onChange={(v) => store.updateSettings({ miniProgressBar: v })}
+        />
       </div>
 
       {markCount > 0 && (
