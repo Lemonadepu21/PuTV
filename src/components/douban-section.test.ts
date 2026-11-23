@@ -8,9 +8,10 @@ import type { BrowseCategory } from '@/lib/browse-categories';
 const preferences = vi.hoisted(() => ({ recommendSource: 'hot-list', imageProxyMode: 'direct', customImageProxy: '' }));
 vi.mock('@/lib/store', () => ({ useAppStore: (select: (state: typeof preferences) => unknown) => select(preferences) }));
 
-function render(category: BrowseCategory, key: string[], data: unknown) {
+function render(category: BrowseCategory, key: (string | number)[], data: unknown) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   if (key[0] === 'movie-browse') client.setQueryData(key, { pages: [(data as { items: unknown[] }).items], pageParams: [0] });
+  else if (key[0] === 'douban-scroll') client.setQueryData(key, { pages: [data], pageParams: [0] });
   else client.setQueryData(key, data);
   return renderToStaticMarkup(createElement(QueryClientProvider, { client },
     createElement(CategorySection, { category, onPick: () => {} })
@@ -49,7 +50,7 @@ describe('分类复用原推荐数据', () => {
 
   it('豆瓣剧集分类使用原 tv 请求与标签', () => {
     preferences.recommendSource = 'douban';
-    const html = render('tv', ['douban', 'tv', '热门'], { items: [movie] });
+    const html = render('tv', ['douban-scroll', 'tv', '热门', 50], { items: [movie] });
     expect(html).toContain('查找 缓存影片 的片源');
     expect(html).toContain('热门剧集');
     expect(html).toContain('日剧');

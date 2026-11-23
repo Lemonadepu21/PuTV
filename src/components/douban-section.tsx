@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/client-api';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import type { DoubanItem } from '@/lib/types';
 import type { BrowseCategory } from '@/lib/browse-categories';
+import { mergeRecommendationPages, nextRecommendationOffset, RECOMMEND_PAGE_SIZE } from '@/lib/recommendation-pages';
 import { RecommendationLayout } from './recommendation-layout';
 import { HomeRecommendations } from './home-recommendations';
 
@@ -73,19 +74,34 @@ function MovieCategory({ onPick }: { onPick: (title: string) => void }) {
 
 /**
  * 豆瓣推荐：影视切换 + 标签筛选。
- * 数据一次拉全（50 条），横向列表复用原条目与懒加载海报。
+ * 网格接近末尾时自动分页，首页横向列表手动分页。
  */
 function DoubanView({ onPick, category, layout = 'home' }: { onPick: (title: string) => void; category?: 'movie' | 'tv'; layout?: 'home' | 'grid' }) {
   const [type, setType] = useState<'movie' | 'tv'>(category || 'movie');
   const [tag, setTag] = useState('热门');
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
-  const query = useQuery({
-    queryKey: ['douban', type, tag],
-    queryFn: ({ signal }) => api.douban(type, tag, 0, 50, signal),
+  const query = useInfiniteQuery({
+    queryKey: ['douban-scroll', type, tag, RECOMMEND_PAGE_SIZE],
+    initialPageParam: 0,
+    queryFn: ({ pageParam, signal }) => api.douban(type, tag, pageParam, RECOMMEND_PAGE_SIZE, signal),
+    getNextPageParam: (last, pages, offset) => nextRecommendationOffset(last, pages, offset),
+    retry: false,
   });
 
   const tags = type === 'movie' ? MOVIE_TAGS : TV_TAGS;
-  const items = query.data?.items ?? [];
+  const items = useMemo(() => mergeRecommendationPages(query.data?.pages ?? []), [query.data]);
+  const { hasNextPage, isFetching, isFetchNextPageError, fetchNextPage } = query;
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (layout !== 'grid' || !target || !hasNextPage || isFetching || isFetchNextPageError || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) void fetchNextPage({ cancelRefetch: false });
+    }, { rootMargin: '600px 0px' });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [layout, hasNextPage, isFetching, isFetchNextPageError, fetchNextPage, type, tag]);
 
   const switchType = (t: 'movie' | 'tv') => {
     if (t === type) return;
@@ -94,11 +110,11 @@ function DoubanView({ onPick, category, layout = 'home' }: { onPick: (title: str
   };
 
   const Layout = layout === 'home' ? HomeRecommendations : RecommendationLayout;
-  return (
+  return (<>
     <Layout
       layout={layout}
       title={`${tag}${type === 'movie' ? '电影' : '剧集'}`}
-      items={items} loading={query.isLoading} error={query.isError}
+      items={items} loading={query.isLoading} error={query.isError && items.length === 0}
       onRetry={() => { void query.refetch(); }} onPick={onPick}
     >
       {!category && <div className="flex items-center justify-between mb-3">
@@ -130,6 +146,16 @@ function DoubanView({ onPick, category, layout = 'home' }: { onPick: (title: str
         ))}
       </div>
     </Layout>
+    {items.length > 0 && (hasNextPage || isFetchNextPageError) && (
+      <div ref={loadMoreRef} className="content-container py-6 text-center">
+        {isFetchNextPageError && <p role="status" className="mb-3 text-sm text-muted">加载失败，请重试</p>}
+        <button type="button" className="btn-ghost min-h-11" disabled={query.isFetchingNextPage}
+          onClick={() => { void fetchNextPage({ cancelRefetch: false }); }}>
+          {query.isFetchingNextPage ? '加载中…' : isFetchNextPageError ? '重试' : '加载更多'}
+        </button>
+      </div>
+    )}
+    </>
   );
 }
 
